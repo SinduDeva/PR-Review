@@ -1168,6 +1168,7 @@ Deduplicate and prioritize by:
     "pr_number": "<from Step 0>",
     "title": "<from Step 1: PR title>",
     "author": "<from Step 1: PR author>",
+    "reviewer": "Claude AI Assistant",
     "source_branch": "<from Step 1>",
     "target_branch": "<from Step 1>",
     "branch": "<source_branch> → <target_branch>",
@@ -1371,6 +1372,15 @@ Deduplicate and prioritize by:
 
 2. Save the JSON from Step 6b to file:
    Write the complete JSON object to: .ai-review/pr-{pr_number}-data.json
+
+   ⚙️ OVERWRITE MODE: If the file already exists, replace it completely with the
+   latest analysis. This ensures the workflow is re-executable - you can review
+   the same PR multiple times and reports will always reflect current state.
+
+   Note: Previous reports are automatically replaced:
+   - .ai-review/pr-{pr_number}-data.json (overwritten)
+   - .ai-review/pr-{pr_number}-data.html (regenerated from JSON)
+   - .ai-review/pr-{pr_number}-jira-comment.txt (regenerated from JSON)
 
 3. Generate HTML report (ZERO LLM tokens — uses external template):
    python .windsurf/workflows/templates/generate-html.py .ai-review/pr-{pr_number}-data.json

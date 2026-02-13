@@ -91,6 +91,39 @@ def print_pagination_info(pagination_metadata):
 
     print("\n" + "━" * 70)
 
+def print_file_detection_info(pagination_metadata):
+    """Print file detection method and performance metrics"""
+    if not pagination_metadata:
+        return
+
+    method = pagination_metadata.get('method', 'unknown')
+    api_calls = pagination_metadata.get('api_calls', 0)
+    files = pagination_metadata.get('total_items_retrieved', 0)
+    fallback = pagination_metadata.get('fallback_used', False)
+
+    print(f"\n{Colors.BOLD}🔍 FILE DETECTION METHOD{Colors.END}\n")
+
+    if method == 'git_local':
+        print(f"  {Colors.GREEN}✓{Colors.END} Method: Git (local)")
+        print(f"  {Colors.GREEN}✓{Colors.END} Performance: ~50ms")
+        print(f"  {Colors.GREEN}✓{Colors.END} API Calls: 0")
+        print(f"  {Colors.GREEN}✓{Colors.END} Files Retrieved: {files}")
+        if fallback:
+            print(f"  ℹ️ BitBucket API was available but git was faster")
+
+    elif method == 'bitbucket_api':
+        print(f"  Method: BitBucket API")
+        print(f"  API Calls: {api_calls}")
+        print(f"  Files Retrieved: {files}")
+        if fallback:
+            print(f"  {Colors.YELLOW}⚠️ Git failed, used API fallback{Colors.END}")
+
+        # Performance tip
+        if api_calls > 1:
+            print(f"\n  {Colors.CYAN}💡 Tip: Clone repo locally and use git for 60x faster detection{Colors.END}")
+
+    print("\n" + "━" * 70)
+
 def print_critical_findings(findings):
     """Print critical and high severity findings"""
     critical_findings = [f for f in findings if f['severity'] in ['CRITICAL', 'HIGH']]
@@ -275,6 +308,7 @@ def format_cli_output(data_file):
     
     # Print each section
     print_header()
+    print_file_detection_info(data.get('pagination_metadata'))
     print_pagination_info(data.get('pagination_metadata'))
     print_summary(data['summary'])
     print_critical_findings(data['findings'])

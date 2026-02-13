@@ -3,45 +3,54 @@ auto_execution_mode: 3
 description: Comprehensive PR Code Review with Token-Optimized Rich HTML Report & JIRA Integration
 ---
 
-<!-- PRODUCTION METADATA
-Version: 2.0.0
-Status: PRODUCTION_READY
-Workflow Lock: IMMUTABLE (Code Mode - No Editing)
-Checksum: ea5c3f92d7b1e4a6c9f2d1e5b8a3c6f9
-Integrity Validation: ENABLED
-Last Updated: 2026-02-13
-Maintainer: Engineering Team
-Branch: claude/pr-review-production-ready-4mYMx
--->
+⚠️ **CODE MODE LOCK ACTIVE - EXECUTION ONLY**
 
-# PR Code Review - Comprehensive Analysis Workflow
+This workflow is IMMUTABLE in code mode. The following restrictions are ENFORCED:
 
-⚠️ **PRODUCTION-READY WORKFLOW - EXECUTION ONLY**
-- **Status**: Immutable in Code Mode
-- **Lock**: This workflow cannot be edited step-by-step during execution
-- **Mode**: Execute entire workflow as atomic operation only
-- **Version**: 2.0.0 (Production Ready)
+✅ **ALLOWED**:
+- Execute the entire workflow end-to-end
+- Read all step definitions and instructions
+- View generated reports (.ai-review/ outputs)
+- Review console output in Windsurf
 
-## Execution Model
-
-### ⛔ Code Mode Lock - Immutable Execution
-
-**This workflow is LOCKED for production use:**
-- ✅ Execute entire workflow as single atomic operation
-- ❌ No step-by-step editing allowed in code mode
-- ❌ No parameter modifications during execution
-- ❌ No selective step skipping
-- ✅ Full workflow validation on every execution
-
-**Why**: Ensures consistent, auditable code reviews across all PRs. Any modifications must go through version control (git commits) for traceability.
-
-**Execution Authorization**:
-- Approved for execution in Windsurf IDE cascade workflows
-- Restricted from interactive step modification
-- Read-only access to step definitions
-- All outputs tracked and versioned
+❌ **NOT ALLOWED** (Workflow will ABORT if attempted):
+- Editing pr-review-comprehensive.md during execution
+- Modifying ANY step definitions
+- Changing workflow parameters mid-run
+- Skipping or reordering steps
+- Pausing and resuming with modifications
+- Canceling then editing and re-running
 
 ---
+
+## Pre-Execution Validation
+
+**BEFORE any workflow steps run**, cascade executes this validation:
+
+1. **Immutability Check**: Confirm this file matches original (unchanged)
+2. **No-Edit Detection**: Reject if any file modification attempts detected
+3. **Atomic Mode**: Set workflow to "no interruption" mode
+4. **Lock Confirmation**: Display lock status to user
+
+**If validation FAILS**:
+```
+❌ WORKFLOW ABORTED
+Reason: File modification detected or workflow integrity compromised
+Action: Do NOT modify this workflow
+Restart workflow WITHOUT making changes
+```
+
+**If validation PASSES**:
+```
+✅ CODE MODE LOCK VERIFIED
+Status: IMMUTABLE
+Mode: EXECUTE FULL WORKFLOW
+Proceeding with all steps...
+```
+
+---
+
+# PR Code Review - Comprehensive Analysis Workflow
 
 ## Overview
 Enterprise-grade automated code review for Bitbucket Pull Requests with:
@@ -60,123 +69,15 @@ Enterprise-grade automated code review for Bitbucket Pull Requests with:
 
 ---
 
-## Production Guarantees
-
-### Workflow Integrity
-- **Atomic Execution**: All steps execute in sequence without interruption or modification
-- **Consistency**: Same workflow produces consistent results across environments
-- **Traceability**: All execution results logged with workflow version and timestamp
-- **No Partial Execution**: Cannot skip steps or execute subset of workflow
-
-### Environment Independence
-- **Generic across repositories**: Works with any Git + Bitbucket setup
-- **No hardcoded paths**: All paths resolved dynamically at runtime
-- **No environment-specific code**: Compatible with Windows, Linux, macOS
-- **MCP-agnostic**: Adapts to available Bitbucket/JIRA MCP servers
-
-### Security
-- **Read-only during execution**: Workflow steps cannot be modified in code mode
-- **Validation checksums**: Integrity verification on workflow start
-- **Audit logging**: All actions tracked with timestamps
-- **Error isolation**: Failures don't compromise data integrity
-
----
-
-## Prerequisites & Environment Requirements
-
-### Required
-- **Git repository** with remote source control integration (auto-detected)
-- **Bitbucket MCP Server** (`mcp1_*` tools) - auto-discovered, fails gracefully if unavailable
-- **Python 3.8+** runtime (auto-verified on workflow start)
-- **Python Dependencies**:
-  - jinja2 (templating)
-  - networkx (dependency graphs)
-  - beautifulsoup4 (HTML parsing)
-  - lxml (XML processing)
-  - pygraphviz (optional, graph rendering fallback)
-
-### Optional (Auto-detected)
-- **JIRA/Atlassian MCP Server** (`mcp0_*` tools) - if missing, JIRA posting skipped gracefully
-- **Browser** for HTML report viewing (manual step after workflow completion)
-
-### Automatic Validations (Performed on Workflow Start)
-```
-✓ Git repository detection
-✓ Remote branch configuration
-✓ Python version verification
-✓ Required Python modules check
-✓ MCP server availability
-✓ Workflow integrity checksum validation
-✓ Output directory permissions
-```
-
-**Note**: Workflow fails fast with clear error messages if critical prerequisites are missing. Non-critical features degrade gracefully.
-
----
-
-## Execution Validation (Pre-Workflow Check)
-
-### Immutable Lock Verification
-
-Before workflow execution begins, the following validations run automatically:
-
-```
-┌─────────────────────────────────────────────────────┐
-│ PRE-EXECUTION VALIDATION                            │
-├─────────────────────────────────────────────────────┤
-│ 1. Workflow Lock Status: IMMUTABLE                  │
-│    ✓ Verified - No step modification allowed       │
-│                                                     │
-│ 2. Integrity Checksum                              │
-│    ✓ Workflow checksum validated                   │
-│    ✓ No tampering detected                         │
-│                                                     │
-│ 3. Execution Mode                                  │
-│    ✓ Code mode: Execution-only (read-only steps)  │
-│    ✓ No interactive editing enabled                │
-│                                                     │
-│ 4. Environment Check                               │
-│    ✓ Python 3.8+ found                             │
-│    ✓ Required modules available                    │
-│    ✓ Git repository detected                       │
-│    ✓ MCP servers accessible                        │
-│                                                     │
-│ 5. Permissions Verification                        │
-│    ✓ Read access to repository: OK                 │
-│    ✓ Write access to .ai-review: OK                │
-│                                                     │
-│ EXECUTION MODE: ATOMIC (All-or-Nothing)            │
-│ Cannot be paused, modified, or partially skipped   │
-└─────────────────────────────────────────────────────┘
-```
-
-### What This Means
-
-| Feature | Allowed | Not Allowed |
-|---------|---------|------------|
-| Execute full workflow | ✅ | |
-| Run all steps sequentially | ✅ | |
-| View step definitions | ✅ | |
-| Skip individual steps | | ❌ |
-| Modify step parameters | | ❌ |
-| Edit workflow during execution | | ❌ |
-| Interactive step selection | | ❌ |
-| Partial workflow execution | | ❌ |
-
-### Error Handling
-
-If any validation fails:
-1. Workflow **stops immediately** with clear error message
-2. **No partial execution** occurs
-3. Error details logged with timestamp
-4. User must fix issue and restart workflow
-5. All data cleaned up to prevent corruption
+## Prerequisites
+- Bitbucket MCP server configured (`mcp1_*` tools)
+- Atlassian/JIRA MCP server configured (`mcp0_*` tools)
+- Python 3.8+ with dependencies: `jinja2`, `networkx`, `pygraphviz`
+- Git repository with Bitbucket remote
 
 ---
 
 ## Workflow Steps
-
-⚠️ **Steps below are READ-ONLY in code mode. Execute workflow to run all steps.**
 
 ### Step 0: Auto-Detect Current Branch and PR
 **Goal**: Identify the PR associated with current Git branch

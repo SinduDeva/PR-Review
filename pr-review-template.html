@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PR #{{ metadata.pr_number }} - Code Review Report</title>
+    
+    <!-- External CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --critical-color: #dc3545;
+            --high-color: #fd7e14;
+            --medium-color: #ffc107;
+            --low-color: #6c757d;
+            --pass-color: #28a745;
+            --warning-color: #ffc107;
+            --fail-color: #dc3545;
+            
+            --controller-color: #3498db;
+            --service-color: #2ecc71;
+            --repository-color: #e67e22;
+            --model-color: #9b59b6;
+            --utility-color: #95a5a6;
+            --config-color: #34495e;
+            --database-color: #e74c3c;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f8f9fa;
+            padding-bottom: 50px;
+        }
+        
+        .header-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 0;
+            margin-bottom: 2rem;
+            border-radius: 0 0 15px 15px;
+        }
+        
+        .pr-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+        
+        .badge-custom {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            margin-right: 0.5rem;
+        }
+        
+        .metric-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .metric-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 0.5rem;
+        }
+        
+        .severity-critical { color: var(--critical-color); }
+        .severity-high { color: var(--high-color); }
+        .severity-medium { color: var(--medium-color); }
+        .severity-low { color: var(--low-color); }
+        
+        .badge-critical { background-color: var(--critical-color); }
+        .badge-high { background-color: var(--high-color); }
+        .badge-medium { background-color: var(--medium-color); }
+        .badge-low { background-color: var(--low-color); }
+        
+        .layer-controller { color: var(--controller-color); }
+        .layer-service { color: var(--service-color); }
+        .layer-repository { color: var(--repository-color); }
+        .layer-model { color: var(--model-color); }
+        .layer-config { color: var(--config-color); }
+        .layer-database { color: var(--database-color); }
+        
+        .file-accordion .accordion-button {
+            font-weight: 600;
+            padding: 1.25rem;
+        }
+        
+        .file-accordion .accordion-button:not(.collapsed) {
+            background-color: #e7f3ff;
+            color: #0066cc;
+        }
+        
+        .file-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        
+        .file-icon {
+            font-size: 1.5rem;
+        }
+        
+        .file-changes {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .validation-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        
+        .validation-item {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #dee2e6;
+        }
+        
+        .validation-item.pass { border-left-color: var(--pass-color); }
+        .validation-item.warning { border-left-color: var(--warning-color); }
+        .validation-item.fail { border-left-color: var(--fail-color); }
+        
+        .issue-card {
+            background: white;
+            border-left: 4px solid;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .issue-card.critical { border-left-color: var(--critical-color); }
+        .issue-card.high { border-left-color: var(--high-color); }
+        .issue-card.medium { border-left-color: var(--medium-color); }
+        .issue-card.low { border-left-color: var(--low-color); }
+        
+        .code-snippet {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        
+        .fix-suggestion {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+        }
+        
+        #dependency-graph {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            background: white;
+        }
+        
+        .graph-legend {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        .recommendation-box {
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+        }
+        
+        .recommendation-box.approve {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+        
+        .recommendation-box.request-changes {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+        }
+        
+        .recommendation-box.block {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+        }
+        
+        .must-fix {
+            background: #f8d7da;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+        
+        .should-fix {
+            background: #fff3cd;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+        
+        @media print {
+            .no-print { display: none; }
+            .header-section { background: #667eea; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header Section -->
+    <div class="header-section">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <h1 class="pr-title">
+                        <i class="fas fa-code-branch"></i> PR #{{ metadata.pr_number }}
+                    </h1>
+                    <h2 class="h4 mb-3">{{ metadata.title }}</h2>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-light text-dark badge-custom">
+                            <i class="fas fa-user"></i> {{ metadata.author }}
+                        </span>
+                        <span class="badge bg-info badge-custom">
+                            {{ metadata.branch }}
+                        </span>
+                        <span class="badge bg-secondary badge-custom">
+                            <i class="far fa-clock"></i> {{ metadata.review_date }}
+                        </span>
+                        <span class="badge bg-success badge-custom">
+                            <i class="fas fa-stopwatch"></i> {{ metadata.execution_time_seconds }}s
+                        </span>
+                        {% for ticket in metadata.jira_tickets %}
+                        <span class="badge bg-warning text-dark badge-custom">
+                            <i class="fas fa-ticket-alt"></i> {{ ticket }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-lg-4 text-lg-end mt-3 mt-lg-0 no-print">
+                    <button class="btn btn-light btn-lg me-2" onclick="window.print()">
+                        <i class="fas fa-print"></i> Print
+                    </button>
+                    <button class="btn btn-success btn-lg" onclick="exportToPDF()">
+                        <i class="fas fa-file-pdf"></i> Export PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Executive Summary -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2 class="mb-4"><i class="fas fa-chart-bar"></i> Executive Summary</h2>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-value">{{ summary.files_validated }}</div>
+                    <div class="metric-label">Files Reviewed</div>
+                    <small class="text-muted">{{ summary.files_excluded }} excluded</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-value text-success">+{{ summary.lines_added }}</div>
+                    <div class="metric-value text-danger">-{{ summary.lines_deleted }}</div>
+                    <div class="metric-label">Lines Changed</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-value severity-critical">{{ summary.critical_issues }}</div>
+                    <div class="metric-label">Critical Issues</div>
+                    <small class="severity-high">{{ summary.high_issues }} High</small>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-value">{{ summary.bugs_detected }}</div>
+                    <div class="metric-label">Bugs Detected</div>
+                    <small class="text-muted">{{ summary.test_coverage_overall }} coverage</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Impact Analysis Section -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-dark text-white">
+                <h3 class="mb-0"><i class="fas fa-project-diagram"></i> Impact Analysis & Dependency Graph</h3>
+            </div>
+            <div class="card-body">
+                <!-- Graph Legend -->
+                <div class="graph-legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--controller-color);"></div>
+                        <span>Controller</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--service-color);"></div>
+                        <span>Service</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--repository-color);"></div>
+                        <span>Repository</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--model-color);"></div>
+                        <span>Model</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--config-color);"></div>
+                        <span>Config</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: var(--database-color);"></div>
+                        <span>Database</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #dc3545; border: 3px solid #721c24;"></div>
+                        <span>Modified Files</span>
+                    </div>
+                </div>
+                
+                <!-- Dependency Graph -->
+                <div id="dependency-graph"></div>
+                
+                <!-- Impact Summary -->
+                <div class="row mt-4">
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-value">{{ impact_analysis.summary.files_changed }}</div>
+                            <div class="metric-label">Files Changed</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-value">{{ impact_analysis.summary.direct_impact }}</div>
+                            <div class="metric-label">Direct Impact</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-value">{{ impact_analysis.summary.transitive_impact }}</div>
+                            <div class="metric-label">Transitive Impact</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-value 
+                                {% if impact_analysis.summary.risk_level == 'HIGH' %}text-danger
+                                {% elif impact_analysis.summary.risk_level == 'MEDIUM' %}text-warning
+                                {% else %}text-success{% endif %}">
+                                {{ impact_analysis.summary.risk_level }}
+                            </div>
+                            <div class="metric-label">Risk Level</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Affected APIs -->
+                {% if impact_analysis.affected_apis %}
+                <div class="mt-4">
+                    <h5><i class="fas fa-exclamation-triangle text-warning"></i> Affected APIs</h5>
+                    {% for api in impact_analysis.affected_apis %}
+                    <div class="alert alert-{{ 'danger' if api.change_type == 'BREAKING' else 'warning' }}">
+                        <strong>{{ api.endpoint }}</strong> - {{ api.impact_level }} Impact
+                        <br><small>Consumers: {{ api.consumers | join(', ') }}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Files Reviewed Section -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0"><i class="fas fa-file-code"></i> Files Reviewed ({{ summary.files_validated }})</h3>
+            </div>
+            <div class="card-body">
+                <div class="accordion file-accordion" id="filesAccordion">
+                    {% for file in files_reviewed %}
+                    <div class="accordion-item mb-3">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#file{{ loop.index }}">
+                                <div class="file-header w-100">
+                                    <i class="fas fa-{{ 'coffee' if file.type == 'java' else 'file-code' if file.type == 'xml' else 'cog' if file.type == 'yaml' else 'database' if file.type == 'sql' else 'file' }} file-icon"></i>
+                                    <strong>{{ file.path | basename }}</strong>
+                                    
+                                    {% if file.layer %}
+                                    <span class="badge bg-secondary layer-{{ file.layer | lower }}">{{ file.layer }}</span>
+                                    {% endif %}
+                                    
+                                    <span class="badge bg-info">{{ file.status }}</span>
+                                    
+                                    <span class="file-changes">
+                                        <span class="text-success">+{{ file.additions }}</span> /
+                                        <span class="text-danger">-{{ file.deletions }}</span>
+                                    </span>
+                                    
+                                    {% if file.validations.overall_status == 'PASS' %}
+                                    <span class="badge bg-success">✅ PASS</span>
+                                    {% elif file.validations.overall_status == 'WARNING' %}
+                                    <span class="badge bg-warning">⚠️ WARNING</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">❌ FAIL</span>
+                                    {% endif %}
+                                    
+                                    {% if file.issues %}
+                                    <span class="badge bg-danger">{{ file.issues | length }} issues</span>
+                                    {% endif %}
+                                </div>
+                            </button>
+                        </h2>
+                        <div id="file{{ loop.index }}" class="accordion-collapse collapse" 
+                             data-bs-parent="#filesAccordion">
+                            <div class="accordion-body">
+                                <!-- AI Summary -->
+                                <div class="alert alert-info">
+                                    <strong><i class="fas fa-robot"></i> AI Summary:</strong>
+                                    <p class="mb-0 mt-2">{{ file.ai_summary }}</p>
+                                </div>
+
+                                <!-- Validation Results Grid -->
+                                <h5 class="mt-4 mb-3">Validation Results</h5>
+                                <div class="validation-grid">
+                                    <div class="validation-item {{ 'fail' if file.validations.bugs_detected > 0 else 'pass' }}">
+                                        <strong>Bugs Detected</strong>
+                                        <div class="h4 mb-0 {{ 'text-danger' if file.validations.bugs_detected > 0 else 'text-success' }}">
+                                            {{ file.validations.bugs_detected }}
+                                            {{ '❌' if file.validations.bugs_detected > 0 else '✅' }}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="validation-item {{ 'fail' if file.validations.security_issues > 0 else 'pass' }}">
+                                        <strong>Security Issues</strong>
+                                        <div class="h4 mb-0 {{ 'text-danger' if file.validations.security_issues > 0 else 'text-success' }}">
+                                            {{ file.validations.security_issues }}
+                                            {{ '❌' if file.validations.security_issues > 0 else '✅' }}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="validation-item {{ 'fail' if file.validations.performance_issues > 0 else 'pass' }}">
+                                        <strong>Performance</strong>
+                                        <div class="h4 mb-0 {{ 'text-danger' if file.validations.performance_issues > 0 else 'text-success' }}">
+                                            {{ file.validations.performance_issues }}
+                                            {{ '❌' if file.validations.performance_issues > 0 else '✅' }}
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="validation-item {{ 'fail' if file.validations.code_quality == 'FAIL' else 'warning' if file.validations.code_quality == 'PARTIAL' else 'pass' }}">
+                                        <strong>Code Quality</strong>
+                                        <div class="h5 mb-0">{{ file.validations.code_quality }}</div>
+                                    </div>
+                                    
+                                    {% if file.type == 'java' %}
+                                    <div class="validation-item {{ 'fail' if file.validations.spring_boot_compliance == 'FAIL' else 'warning' if file.validations.spring_boot_compliance == 'PARTIAL' else 'pass' }}">
+                                        <strong>Spring Boot</strong>
+                                        <div class="h5 mb-0">{{ file.validations.spring_boot_compliance }}</div>
+                                    </div>
+                                    {% endif %}
+                                    
+                                    {% if file.test_coverage %}
+                                    <div class="validation-item {{ 'fail' if file.test_coverage.coverage_percentage < '70%' else 'warning' if file.test_coverage.coverage_percentage < '80%' else 'pass' }}">
+                                        <strong>Test Coverage</strong>
+                                        <div class="h5 mb-0">{{ file.test_coverage.coverage_percentage }}</div>
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Issues in This File -->
+                                {% if file.issues %}
+                                <h5 class="mt-4 mb-3">Issues Found ({{ file.issues | length }})</h5>
+                                {% for issue in file.issues %}
+                                <div class="issue-card {{ issue.severity | lower }}">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <span class="badge badge-{{ issue.severity | lower }} mb-2">
+                                                {{ issue.severity }}
+                                            </span>
+                                            <span class="badge bg-secondary">{{ issue.type }}</span>
+                                            <span class="badge bg-dark">Line {{ issue.line }}</span>
+                                        </div>
+                                        <small class="text-muted">{{ issue.id }}</small>
+                                    </div>
+                                    <h6 class="mt-2">{{ issue.description }}</h6>
+                                    <p class="mb-2"><strong>Impact:</strong> {{ issue.impact }}</p>
+                                    
+                                    {% if issue.code %}
+                                    <details class="mt-2">
+                                        <summary class="text-primary" style="cursor: pointer;">
+                                            <i class="fas fa-code"></i> View Code Snippet
+                                        </summary>
+                                        <div class="code-snippet mt-2">
+                                            <code>{{ issue.code }}</code>
+                                        </div>
+                                    </details>
+                                    {% endif %}
+                                    
+                                    {% if issue.fix %}
+                                    <details class="mt-2">
+                                        <summary class="text-success" style="cursor: pointer;">
+                                            <i class="fas fa-wrench"></i> Suggested Fix
+                                        </summary>
+                                        <div class="fix-suggestion mt-2">
+                                            <pre class="mb-0"><code>{{ issue.fix }}</code></pre>
+                                        </div>
+                                    </details>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                <div class="alert alert-success">
+                                    <i class="fas fa-check-circle"></i> No issues found in this file!
+                                </div>
+                                {% endif %}
+
+                                <!-- Test Coverage for This File -->
+                                {% if file.test_coverage %}
+                                <h5 class="mt-4 mb-3">Test Coverage</h5>
+                                <div class="card">
+                                    <div class="card-body">
+                                        {% if file.test_coverage.exists %}
+                                        <p><strong>Test File:</strong> <code>{{ file.test_coverage.test_file }}</code></p>
+                                        <div class="progress mb-3" style="height: 30px;">
+                                            <div class="progress-bar 
+                                                {% if file.test_coverage.coverage_percentage >= '80%' %}bg-success
+                                                {% elif file.test_coverage.coverage_percentage >= '70%' %}bg-warning
+                                                {% else %}bg-danger{% endif %}"
+                                                style="width: {{ file.test_coverage.coverage_percentage }}">
+                                                {{ file.test_coverage.coverage_percentage }}
+                                            </div>
+                                        </div>
+                                        <p>
+                                            <strong>Methods:</strong> 
+                                            {{ file.test_coverage.tested_methods }}/{{ file.test_coverage.new_methods }} tested
+                                        </p>
+                                        
+                                        {% if file.test_coverage.missing_tests %}
+                                        <div class="alert alert-warning">
+                                            <strong>Missing Tests:</strong>
+                                            <ul class="mb-0 mt-2">
+                                                {% for missing in file.test_coverage.missing_tests %}
+                                                <li>
+                                                    <code>{{ missing.method }}</code> - {{ missing.reason }}
+                                                    <br><small class="text-muted">{{ missing.recommendation }}</small>
+                                                </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </div>
+                                        {% endif %}
+                                        {% else %}
+                                        <div class="alert alert-danger">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                            No test file found! Expected: <code>{{ file.test_coverage.test_file }}</code>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <!-- Dependencies -->
+                                {% if file.dependencies %}
+                                <h5 class="mt-4 mb-3">Dependencies</h5>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <strong>Imports:</strong>
+                                        <ul>
+                                            {% for imp in file.dependencies.imports %}
+                                            <li><code>{{ imp }}</code></li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <strong>Called By:</strong>
+                                        <ul>
+                                            {% for caller in file.dependencies.called_by %}
+                                            <li><code>{{ caller }}</code></li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Excluded Files -->
+                {% if files_excluded %}
+                <details class="mt-4">
+                    <summary class="h5 text-muted" style="cursor: pointer;">
+                        <i class="fas fa-eye-slash"></i> Excluded Files ({{ files_excluded | length }})
+                    </summary>
+                    <ul class="mt-3">
+                        {% for file in files_excluded %}
+                        <li>
+                            <code>{{ file.path }}</code> - <em>{{ file.reason }}</em>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </details>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Spring Boot Validation -->
+        {% if spring_boot_validation %}
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-success text-white">
+                <h3 class="mb-0"><i class="fas fa-leaf"></i> Spring Boot Best Practices</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <canvas id="springScoresChart"></canvas>
+                    </div>
+                    <div class="col-md-6">
+                        {% for category, data in spring_boot_validation.items() %}
+                        <div class="mb-3">
+                            <h5>
+                                {{ category | title }} 
+                                <span class="badge 
+                                    {% if data.status == 'PASS' %}bg-success
+                                    {% elif data.status == 'WARNING' %}bg-warning
+                                    {% else %}bg-danger{% endif %}">
+                                    {{ data.score }}/10
+                                </span>
+                            </h5>
+                            {% if data.issues %}
+                            <ul class="small">
+                                {% for issue in data.issues %}
+                                <li>{{ issue }}</li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Test Coverage -->
+        {% if test_coverage %}
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-info text-white">
+                <h3 class="mb-0"><i class="fas fa-vial"></i> Test Coverage Analysis</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <canvas id="coverageChart"></canvas>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Overall: {{ test_coverage.overall }}</h5>
+                        <div class="progress mb-3" style="height: 30px;">
+                            <div class="progress-bar bg-success" style="width: {{ test_coverage.overall }}">
+                                {{ test_coverage.overall }}
+                            </div>
+                        </div>
+                        
+                        {% for type, coverage in test_coverage.by_type.items() %}
+                        <div class="mb-2">
+                            <strong>{{ type | title }}:</strong> {{ coverage }}
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar 
+                                    {% if coverage >= '75%' %}bg-success
+                                    {% elif coverage >= '50%' %}bg-warning
+                                    {% else %}bg-danger{% endif %}"
+                                    style="width: {{ coverage }}">
+                                    {{ coverage }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Overall Recommendation -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-warning">
+                <h3 class="mb-0"><i class="fas fa-thumbs-up"></i> Overall Recommendation</h3>
+            </div>
+            <div class="card-body">
+                <div class="recommendation-box {{ overall_recommendation.decision | lower | replace('_', '-') }}">
+                    <h4>
+                        {% if overall_recommendation.decision == 'APPROVE' %}
+                        ✅ APPROVE
+                        {% elif overall_recommendation.decision == 'REQUEST_CHANGES' %}
+                        ⚠️ REQUEST CHANGES
+                        {% else %}
+                        🛑 BLOCK MERGE
+                        {% endif %}
+                    </h4>
+                    <p class="lead">{{ overall_recommendation.reason }}</p>
+                </div>
+
+                {% if overall_recommendation.must_fix %}
+                <div class="must-fix">
+                    <h5>Must Fix Before Merge:</h5>
+                    <ol>
+                        {% for item in overall_recommendation.must_fix %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ol>
+                </div>
+                {% endif %}
+
+                {% if overall_recommendation.should_fix %}
+                <div class="should-fix">
+                    <h5>Should Fix:</h5>
+                    <ul>
+                        {% for item in overall_recommendation.should_fix %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                {% if positive_observations %}
+                <div class="alert alert-success mt-3">
+                    <h5>✅ Positive Observations:</h5>
+                    <ul class="mb-0">
+                        {% for obs in positive_observations %}
+                        <li>{{ obs }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="container mt-5">
+        <hr>
+        <p class="text-center text-muted">
+            <small>
+                Generated: {{ generated_at }} | Review ID: {{ metadata.review_id }}
+                <br>Automated PR Code Review Workflow
+            </small>
+        </p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+
+    <script>
+        // Dependency Graph
+        {% if impact_analysis and impact_analysis.dependency_graph %}
+        const graphData = {{ impact_analysis.dependency_graph | tojson }};
+        
+        const cy = cytoscape({
+            container: document.getElementById('dependency-graph'),
+            elements: graphData,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'color': '#fff',
+                        'text-outline-width': 2,
+                        'text-outline-color': 'data(color)',
+                        'background-color': 'data(color)',
+                        'width': 80,
+                        'height': 80,
+                        'font-size': 12
+                    }
+                },
+                {
+                    selector: 'node[status="MODIFIED"]',
+                    style: {
+                        'border-width': 4,
+                        'border-color': '#dc3545'
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 3,
+                        'line-color': '#ccc',
+                        'target-arrow-color': '#ccc',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier'
+                    }
+                }
+            ],
+            layout: {
+                name: 'breadthfirst',
+                directed: true,
+                spacingFactor: 1.5,
+                animate: true
+            }
+        });
+        {% endif %}
+
+        // Spring Boot Scores Chart
+        {% if spring_boot_validation %}
+        const springCtx = document.getElementById('springScoresChart');
+        if (springCtx) {
+            new Chart(springCtx, {
+                type: 'radar',
+                data: {
+                    labels: {{ spring_boot_validation.keys() | list | tojson }},
+                    datasets: [{
+                        label: 'Score',
+                        data: [
+                            {% for category, data in spring_boot_validation.items() %}
+                            {{ data.score }},
+                            {% endfor %}
+                        ],
+                        backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                        borderColor: 'rgba(40, 167, 69, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 10
+                        }
+                    }
+                }
+            });
+        }
+        {% endif %}
+
+        // Test Coverage Chart
+        {% if test_coverage %}
+        const coverageCtx = document.getElementById('coverageChart');
+        if (coverageCtx) {
+            new Chart(coverageCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Unit', 'Integration', 'E2E', 'Uncovered'],
+                    datasets: [{
+                        data: [
+                            {{ test_coverage.by_type.unit | replace('%', '') }},
+                            {{ test_coverage.by_type.integration | replace('%', '') }},
+                            {{ test_coverage.by_type.e2e | replace('%', '') }},
+                            {{ 100 - (test_coverage.overall | replace('%', '') | int) }}
+                        ],
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d']
+                    }]
+                }
+            });
+        }
+        {% endif %}
+
+        // Export to PDF
+        function exportToPDF() {
+            window.print();
+        }
+    </script>
+</body>
+</html>

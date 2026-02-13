@@ -247,60 +247,152 @@ If no JIRA tickets found, set `jira_tickets: []` and add `jira_warning` field. R
 
 ---
 
-### Step 2: Get Changed Files in PR (PR Changes Only)
+### Step 2: Get Changed Files in PR (ALL Files - Review Changes Only)
 
-**Goal**: Build complete list of ONLY files changed in this PR with their diffs
+**Goal**: Get complete list of ALL files changed in PR, with diffs showing ONLY the changes (not entire file)
 
-**IMPORTANT**: Analyze ONLY files modified in this PR, NOT the entire codebase.
+**IMPORTANT**:
+- Analyze ONLY files modified in this PR
+- For each file, review ONLY the changed portions (from diff)
+- Do NOT analyze unchanged portions of files
+- Do NOT analyze entire file content
 
-**Primary Method** - Try Bitbucket diffstat:
+**Enhanced Method** - Get all files with diffs, extract changed portions:
+
+**1. Get all changed files in PR:**
 ```
 Call: mcp1_getPullRequestDiffStat(pr_number)
-If success: Extract file paths and stats (additions, deletions)
-Result: List of changed files with modification counts
+→ Returns: List of ALL files changed in PR with stats (additions, deletions)
+
+If diffstat fails (404 error):
+  Call: mcp1_getPullRequestDiff(pr_number)
+  → Returns: Full unified diff for entire PR
+  → Parse to extract: file paths and their diffs
 ```
 
-**Fallback Method** - Parse unified diff (when diffstat returns 404):
+**2. For each file in changed files list:**
+
 ```
-1. If mcp1_getPullRequestDiffStat returns 404/Not Found (common for large PRs), immediately switch to unified diff
-   - Call: mcp1_getPullRequestDiff(pr_number)
-   - Save the diff output path provided in MCP logs (Temp file path)
-2. Parse diff content:
-   - Split on "diff --git a/... b/..." markers
-   - Extract file paths and content
-   - Track additions / deletions manually by counting lines with leading '+' / '-'
-3. Build file change objects with full diffs
-4. Proceed to Step 3 with this reconstructed file list (mark source="unified diff" in logs)
+a. Get file's diff from PR:
+   Call: mcp1_getPullRequestDiff(pr_number)
+   → Extract: Only this file's section from the diff
+   → Result: Shows what changed in this file
+
+b. Parse diff to identify changed portions:
+   - Parse unified diff format (@@...@@ markers showing line numbers)
+   - Extract: Line numbers with changes from @@ markers
+   - Extract: Added lines (prefix: +)
+   - Extract: Deleted lines (prefix: -)
+   - Extract: Modified lines (context around changes)
+   - Example: @@ -45,20 +45,23 @@ means changes around line 45
+
+c. Build file change object:
+   {
+     path: file_path,
+     change_type: ADDED | MODIFIED | DELETED,
+     total_additions: count_of_+ lines,
+     total_deletions: count_of_- lines,
+     diff: only_changed_portions_from_unified_diff,
+     changed_sections: [
+       {
+         start_line: 45,
+         end_line: 67,
+         type: "addition",
+         content: "... new code added ..."
+       },
+       {
+         start_line: 120,
+         end_line: 125,
+         type: "modification",
+         old_content: "... code before change ...",
+         new_content: "... code after change ..."
+       }
+     ]
+   }
 ```
 
-**Output**: Array of ONLY changed files in this PR
+**3. Exclude patterns** (but track in output):
+- Test files: `*Test.java`, `*Tests.java`, `src/test/**/*`
+- Build configs: `pom.xml`, `build.gradle`
+- Documentation: `*.md`, `*.txt`
+- (These files still appear in file list, but validation skips them)
+
+**4. Build output:**
+```
+- All changed files
+- For each file: diffs showing ONLY changed portions
+- Include: line numbers of changes (from @@ markers)
+- Include: type of change (added, deleted, modified)
+- Exclude: unchanged portions of files
+```
+
+**Key Point - Validation Reviews Changes Only:**
+```
+For validation steps (Steps 4-7):
+- Analyze only the changed lines from diff
+- Do NOT fetch entire file to analyze full content
+- Use diff context to understand changes
+- Example: If 500-line file changed lines 45-67, validate only those lines
+```
+
+**Output**: Array of ALL changed files with diffs showing ONLY changed portions
 ```json
 {
   "files": [
     {
       "path": "src/main/java/com/example/service/DataService.java",
-      "additions": 45,
-      "deletions": 12,
-      "type": "MODIFY",
-      "diff": "... full diff content ..."
+      "change_type": "MODIFIED",
+      "total_additions": 67,
+      "total_deletions": 23,
+      "diff": "... ONLY the changed portions ...",
+      "changed_sections": [
+        {
+          "start_line": 45,
+          "end_line": 67,
+          "type": "addition",
+          "content": "... new code added ..."
+        },
+        {
+          "start_line": 120,
+          "end_line": 125,
+          "type": "modification",
+          "old_content": "... code before change ...",
+          "new_content": "... code after change ..."
+        }
+      ]
     },
     {
-      "path": "src/main/resources/application.yml",
-      "additions": 3,
-      "deletions": 1,
-      "type": "MODIFY",
-      "diff": "... full diff content ..."
+      "path": "src/main/java/com/example/controller/DataController.java",
+      "change_type": "ADDED",
+      "total_additions": 150,
+      "total_deletions": 0,
+      "diff": "... entire new file shown as additions ...",
+      "note": "File was created in this PR"
     }
   ],
   "total_files": 12,
-  "files_by_type": {
-    "java": 8,
-    "xml": 2,
-    "yaml": 1,
-    "sql": 1,
-    "test": 0
+  "files_by_status": {
+    "ADDED": 2,
+    "MODIFIED": 9,
+    "DELETED": 1
   }
 }
+```
+
+**Error Handling:**
+```
+If mcp1_getPullRequestDiffStat() fails:
+  → Fall back to: mcp1_getPullRequestDiff(pr_number)
+  → Parse to extract file list
+
+If diff parsing fails:
+  → Log error with file path
+  → Mark file as "requires_manual_review"
+  → Continue with other files
+
+If file cannot be parsed:
+  → Skip detailed analysis
+  → Include in file list with note "parsing_failed"
 ```
 
 **Exclude from validation** (but include in impact analysis):

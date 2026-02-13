@@ -185,6 +185,7 @@ def generate_html_report(data):
         'metadata': build_metadata(data),
         'summary': build_summary(files_reviewed, files_skipped, critical, high, medium, data),
         'pagination_metadata': data.get('pagination_metadata'),
+        'execution_status': data.get('execution_status'),
         'impact_analysis': build_impact_analysis(files_reviewed, critical, high, data),
         'files_reviewed': build_files_context(files_reviewed, findings),
         'files_excluded': data.get('files_excluded', [{'path': f.get('path', 'unknown'), 'reason': f.get('reason', 'Skipped by workflow')} for f in files_skipped]),

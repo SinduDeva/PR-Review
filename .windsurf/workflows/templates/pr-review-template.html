@@ -590,6 +590,85 @@ No dependency analysis available.
             </div>
         </div>
 
+        <!-- Execution Status & Errors Section -->
+        {% if execution_status and (execution_status.warnings or execution_status.failed_steps > 0 or execution_status.skipped_steps > 0) %}
+        <div class="card shadow-sm mb-4 border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h3 class="mb-0"><i class="fas fa-exclamation-circle"></i> Execution Status & Issues</h3>
+            </div>
+            <div class="card-body">
+                <!-- Overall Status -->
+                <div class="alert alert-{{ 'danger' if execution_status.overall_status == 'completed_with_errors' else 'warning' }}">
+                    <strong>Overall Status:</strong> {{ execution_status.overall_status | replace('_', ' ') | title }}
+                    <br><small class="mt-2 d-block">
+                        ✅ {{ execution_status.successful_steps }} successful /
+                        ⚠️ {{ execution_status.skipped_steps }} skipped /
+                        ❌ {{ execution_status.failed_steps }} failed
+                    </small>
+                </div>
+
+                <!-- Step-by-Step Status -->
+                {% if execution_status.steps %}
+                <div class="mt-3">
+                    <h5><i class="fas fa-tasks"></i> Step Details</h5>
+                    <div class="row">
+                        {% for step_name, step_data in execution_status.steps.items() %}
+                        {% if step_data.status != 'success' %}
+                        <div class="col-md-6 mb-3">
+                            <div class="card border-{{ 'danger' if step_data.status == 'failed' else 'danger' if step_data.status == 'success_fallback' else 'secondary' }}">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        {% if step_data.status == 'failed' %}
+                                        <i class="fas fa-times-circle text-danger"></i> Failed
+                                        {% elif step_data.status == 'success_fallback' %}
+                                        <i class="fas fa-exclamation-triangle text-warning"></i> Fallback Used
+                                        {% else %}
+                                        <i class="fas fa-info-circle text-secondary"></i> Skipped
+                                        {% endif %}
+                                        {{ step_name | replace('_', ' ') | title }}
+                                    </h6>
+                                    {% if step_data.error %}
+                                    <p class="mb-1"><strong>Error:</strong> {{ step_data.error }}</p>
+                                    {% endif %}
+                                    {% if step_data.fallback_used %}
+                                    <p class="mb-1"><strong>Fallback:</strong> {{ step_data.fallback_method }}</p>
+                                    {% endif %}
+                                    {% if step_data.note %}
+                                    <p class="mb-0 text-muted"><small>{{ step_data.note }}</small></p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Warnings -->
+                {% if execution_status.warnings %}
+                <div class="mt-4">
+                    <h5><i class="fas fa-warning text-warning"></i> Warnings</h5>
+                    <ul class="list-unstyled">
+                        {% for warning in execution_status.warnings %}
+                        <li class="alert alert-warning mb-2">
+                            <i class="fas fa-info-circle"></i> {{ warning }}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <!-- Final Message -->
+                {% if execution_status.final_message %}
+                <div class="alert alert-info mt-4 mb-0">
+                    <strong>Summary:</strong> {{ execution_status.final_message }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Files Reviewed Section -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-primary text-white">

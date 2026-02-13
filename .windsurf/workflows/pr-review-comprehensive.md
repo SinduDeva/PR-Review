@@ -104,13 +104,68 @@ Enterprise-grade automated code review for Bitbucket Pull Requests with:
 
 ---
 
+## Error Handling Guidelines
+
+**Golden Rule**: Workflow ALWAYS generates HTML report with error details, even if steps fail.
+
+**Error Pattern**: Try → Fallback → Skip → Report & Continue
+
+Each workflow step follows this pattern:
+
+```
+TRY (Primary Method):
+  Attempt primary method to complete step
+  If successful: Record success, continue to next step
+
+FALLBACK (if Primary Fails):
+  Attempt alternative/secondary method
+  If successful: Record "success_fallback", continue to next step
+
+SKIP (if Fallback Also Fails):
+  Do NOT abort workflow
+  Log error to execution_status metadata
+  Set step data to empty/null
+  Continue to next step
+  Report error in final HTML report
+
+REPORT (Always):
+  Track in execution_status:
+    - status: success|success_fallback|failed|skipped
+    - attempted: number of attempts
+    - fallback_used: true|false
+    - error: error message if applicable
+  Include all errors in HTML report for transparency
+```
+
+**Error Handling by Step**:
+
+| Step | Primary | Fallback | Skip Behavior |
+|------|---------|----------|---------------|
+| 0 | getPullRequests(OPEN filter) | getPullRequest(pr_number) | Exit with diagnostics |
+| 1 | getPullRequest() + comments | Retry with timeout increase | Continue with empty data |
+| 2 | git diff --numstat | BitBucket API diffstat | Use empty file list |
+| 3 | Code quality analysis | Retry with timeout | Use empty findings |
+| 4 | Spring Boot validation | Retry with timeout | Use empty validation |
+| 5 | Impact analysis | Retry with timeout | Use empty graph |
+| 6 | Python HTML generation | Basic HTML fallback | Minimal text report |
+| 7 | JIRA posting | Log for manual posting | Continue (optional step) |
+
+**Critical Behavior**:
+- ✅ HTML report ALWAYS generated (primary or fallback method)
+- ✅ All errors shown in "Execution Status & Issues" section of report
+- ✅ Workflow NEVER aborts due to analysis step failures (only Step 0 can stop)
+- ✅ JIRA integration NEVER blocks workflow (optional step)
+
+---
+
 ## Workflow Steps
 
 ### Step 0: Auto-Detect Current Branch and PR (ENHANCED)
 **Goal**: Identify the PR associated with current Git branch
 
-**Actions**:
+**Actions** (with error handling):
 ```bash
+PRIMARY METHOD:
 1. Get current branch name:
    git rev-parse --abbrev-ref HEAD
    → Store: current_branch
@@ -120,56 +175,73 @@ Enterprise-grade automated code review for Bitbucket Pull Requests with:
    - Use from MCP tools context (NOT from git URL parsing)
    → Store: workspace, repo_slug
 
-3. Query Bitbucket for OPEN PRs (CRITICAL FIX):
-   Call: mcp1_getPullRequests(
-     workspace="{workspace}",
-     repo_slug="{repo_slug}",
-     state="OPEN"  ← KEY FILTER: Only OPEN/active PRs
-   )
-   → Returns: List of all OPEN PRs in this repository
+3. Query Bitbucket for OPEN PRs (PRIMARY):
+   Try:
+     Call: mcp1_getPullRequests(
+       workspace="{workspace}",
+       repo_slug="{repo_slug}",
+       state="OPEN"
+     )
+   Catch Error or No Results:
+     Log: "Primary PR detection failed, using fallback method"
+     Proceed to FALLBACK METHOD
 
 4. Filter by source branch:
    For each PR in response:
    - Check: PR.source.branch.name == current_branch
    - Check: PR.state == "OPEN"
-   → Filter result: PRs matching current branch (all OPEN)
+   → Filter result: PRs matching current branch
 
-5. Handle scenarios:
+   If matches found:
+     - If exactly 1 PR: Use it → Extract PR number → Continue to Step 1
+     - If multiple PRs: Sort by created_on (descending) → Use most recent → Continue to Step 1
+     - Record in execution_status: status = "success", fallback_used = false
 
-   ✅ If exactly 1 PR found:
-      Use that PR → Extract PR number → Continue to Step 1
+FALLBACK METHOD (if Primary fails):
+5. Get PR directly by attempting all branches:
+   For {current_branch} or {target_branch}:
+     Try:
+       Call: mcp1_getPullRequest(pr_number)
+       If succeeds: Extract PR number → Record fallback_used = true → Continue to Step 1
 
-   ✅ If multiple PRs found (same branch, all OPEN):
-      Sort by created_on timestamp (descending)
-      Use most recent PR → Extract PR number → Continue to Step 1
+   If all attempts fail:
+     Record in execution_status:
+       status: "failed"
+       attempted: 2
+       fallback_used: true
+       error: "Unable to auto-detect PR. Primary and fallback methods failed."
 
-   ❌ If 0 PRs found:
-      STOP WORKFLOW with enhanced diagnostics:
-      Output:
-      ```
-      ❌ NO PR FOUND - WORKFLOW ABORTED
+FAILURE HANDLING (if both methods fail):
+6. Output diagnostics and exit gracefully:
+   Output:
+   ```
+   ❌ NO PR FOUND - WORKFLOW ABORTED
 
-      Diagnostics:
-      - Current Git branch: '{current_branch}'
-      - Workspace: '{workspace}'
-      - Repository: '{repo_slug}'
-      - Total PRs in repository: {count_all_prs}
-      - Open PRs in repository: {count_open_prs}
-      - PRs for this branch: {count_branch_prs}
+   Diagnostics:
+   - Current Git branch: '{current_branch}'
+   - Workspace: '{workspace}'
+   - Repository: '{repo_slug}'
+   - Auto-detection method: FAILED
 
-      Next steps:
-      1. Create a PR in Bitbucket for this branch
-      2. Ensure PR is in OPEN status (not draft/closed)
-      3. Run workflow again once PR exists
-      ```
-      Exit gracefully without error
+   Next steps:
+   1. Create a PR in Bitbucket for this branch
+   2. Ensure PR is in OPEN status (not draft/closed)
+   3. Run workflow again once PR exists
 
-6. Validate PR before proceeding:
-   - PR number: extracted correctly
-   - PR status: verify is "OPEN"
+   Note: This is a terminal condition - cannot proceed without valid PR
+   ```
+
+   Exit workflow without generating HTML (no PR data to analyze)
+   Set execution_status.overall_status = "aborted_no_pr_found"
+
+SUCCESS VALIDATION:
+7. Validate extracted PR before proceeding:
+   - PR number: extracted correctly and is numeric
+   - PR status: verify is "OPEN" (not MERGED, DECLINED, DRAFT)
    - Source branch: matches current_branch
-   - Target branch: exists
+   - Target branch: exists and is accessible
    → All checks pass: Continue to Step 1
+   → Check fails: Retry fallback or abort with diagnostics
 ```
 
 **Output if PR found**: 
@@ -1475,7 +1547,76 @@ Deduplicate and prioritize by:
     "<positive aspects of the code changes>"
   ],
 
-  "ai_summary": "<overall AI-generated summary of the PR changes and their impact>"
+  "ai_summary": "<overall AI-generated summary of the PR changes and their impact>",
+
+  "execution_status": {
+    "overall_status": "<completed|completed_with_warnings|completed_with_errors|partial>",
+    "total_steps": 7,
+    "successful_steps": "<count of fully successful steps>",
+    "failed_steps": "<count of steps that failed all attempts>",
+    "skipped_steps": "<count of skipped optional steps>",
+    "steps": {
+      "step_0_pr_detection": {
+        "status": "<success|failed|success_fallback>",
+        "attempted": "<number of attempts>",
+        "fallback_used": "<true|false>",
+        "error": "<error message if failed, else null>",
+        "fallback_method": "<fallback method used if applicable>"
+      },
+      "step_1_gather_context": {
+        "status": "<success|failed|success_fallback>",
+        "attempted": "<number of attempts>",
+        "fallback_used": "<true|false>",
+        "error": "<error message if failed>"
+      },
+      "step_2_file_detection": {
+        "status": "<success|failed|success_fallback>",
+        "attempted": "<number of attempts>",
+        "fallback_used": "<true|false>",
+        "error": "<error message if failed>",
+        "fallback_method": "<git_local|bitbucket_api|unified_diff>",
+        "files_detected": "<count>"
+      },
+      "step_3_code_quality": {
+        "status": "<success|failed|success_fallback|skipped>",
+        "attempted": "<number of attempts>",
+        "fallback_used": "<true|false>",
+        "error": "<error message if failed>",
+        "note": "<additional context>"
+      },
+      "step_4_spring_boot_validation": {
+        "status": "<success|failed|success_fallback|skipped>",
+        "attempted": "<number of attempts>",
+        "fallback_used": "<true|false>",
+        "error": "<error message if failed>"
+      },
+      "step_5_impact_analysis": {
+        "status": "<success|failed|success_fallback|skipped>",
+        "attempted": "<number of attempts>",
+        "fallback_used": "<true|false>",
+        "error": "<error message if failed>"
+      },
+      "step_6_report_generation": {
+        "status": "<success|partial|failed>",
+        "attempted": "<number of attempts>",
+        "fallback_used": "<true|false>",
+        "error": "<error message if failed>",
+        "note": "CRITICAL - always generates HTML, even if other steps fail"
+      },
+      "step_7_jira_integration": {
+        "status": "<success|failed|skipped_optional>",
+        "attempted": "<number of attempts>",
+        "fallback_used": "<true|false>",
+        "error": "<error message if failed>",
+        "note": "Optional step - workflow continues even if JIRA posting fails",
+        "tickets_posted": "<number of successfully posted tickets>"
+      }
+    },
+    "warnings": [
+      "<array of warning messages for non-critical issues>"
+    ],
+    "final_message": "<summary of overall execution status and what the user should do next>"
+  }
 }
 ```
 

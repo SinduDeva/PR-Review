@@ -3,23 +3,41 @@ auto_execution_mode: 3
 description: Comprehensive PR Code Review with Token-Optimized Rich HTML Report & JIRA Integration
 ---
 
-⚠️ **CODE MODE LOCK ACTIVE - EXECUTION ONLY**
+⚠️ **CODE MODE LOCK ACTIVE - EXECUTION & POST-EXECUTION**
 
-This workflow is IMMUTABLE in code mode. The following restrictions are ENFORCED:
+This workflow is IMMUTABLE in code mode DURING execution and AFTER results are generated.
+The following restrictions are ENFORCED at all times:
 
 ✅ **ALLOWED**:
 - Execute the entire workflow end-to-end
 - Read all step definitions and instructions
 - View generated reports (.ai-review/ outputs)
 - Review console output in Windsurf
+- View execution checkpoint (.ai-review/pr-{number}-execution.lock)
+- Review git history of changes
 
-❌ **NOT ALLOWED** (Workflow will ABORT if attempted):
+❌ **NOT ALLOWED - DURING EXECUTION**:
 - Editing pr-review-comprehensive.md during execution
-- Modifying ANY step definitions
+- Modifying ANY step definitions mid-run
 - Changing workflow parameters mid-run
 - Skipping or reordering steps
 - Pausing and resuming with modifications
 - Canceling then editing and re-running
+
+❌ **NOT ALLOWED - AFTER EXECUTION COMPLETES (Post-Execution Lock)**:
+- Editing pr-review-comprehensive.md after workflow finishes
+- Modifying any workflow steps
+- Editing or deleting generated reports
+- Re-running workflow on same PR with edited workflow
+- Disabling the execution lock
+- Removing the execution checkpoint file
+
+⚠️ **EXCEPTION**: To modify workflow after execution:
+- Create NEW feature branch: `git checkout -b feature/changes`
+- Lock automatically resets on new branch
+- Make changes, test, create PR for review
+- Merge after approval
+- Old results remain locked in original branch
 
 ---
 
@@ -31,6 +49,7 @@ This workflow is IMMUTABLE in code mode. The following restrictions are ENFORCED
 2. **No-Edit Detection**: Reject if any file modification attempts detected
 3. **Atomic Mode**: Set workflow to "no interruption" mode
 4. **Lock Confirmation**: Display lock status to user
+5. **Post-Execution Lock Warning**: Inform user results will be locked after completion
 
 **If validation FAILS**:
 ```
@@ -43,9 +62,17 @@ Restart workflow WITHOUT making changes
 **If validation PASSES**:
 ```
 ✅ CODE MODE LOCK VERIFIED
-Status: IMMUTABLE
+Status: IMMUTABLE (during execution)
 Mode: EXECUTE FULL WORKFLOW
-Proceeding with all steps...
+Post-Execution: Results will be LOCKED after completion
+
+ℹ️ NOTICE: After workflow completes:
+  - Generated results are IMMUTABLE
+  - This workflow file will be LOCKED
+  - To modify: create new feature branch
+  - Original results remain preserved
+
+Proceeding with all 7 analysis steps...
 ```
 
 ---
@@ -79,39 +106,99 @@ Enterprise-grade automated code review for Bitbucket Pull Requests with:
 
 ## Workflow Steps
 
-### Step 0: Auto-Detect Current Branch and PR
+### Step 0: Auto-Detect Current Branch and PR (ENHANCED)
 **Goal**: Identify the PR associated with current Git branch
 
 **Actions**:
 ```bash
 1. Get current branch name:
    git rev-parse --abbrev-ref HEAD
+   → Store: current_branch
 
-2. Search for PR by branch:
-   Call: mcp1_getPullRequests(workspace, repo_slug) and filter by source branch name
-   
-3. Handle scenarios:
-   - If 1 PR found: Use that PR → Continue to Step 1
-   - If multiple PRs: Use the most recent OPEN PR → Continue to Step 1
-   - If no PR found: STOP WORKFLOW
-     Output: "❌ No PR found for branch '{branch_name}'. Please create a PR first."
-     Exit gracefully without error
-   
-4. If PR found, extract PR number for subsequent steps
+2. Get workspace and repository slug from MCP context:
+   - MCP server provides workspace and repo_slug
+   - Use from MCP tools context (NOT from git URL parsing)
+   → Store: workspace, repo_slug
+
+3. Query Bitbucket for OPEN PRs (CRITICAL FIX):
+   Call: mcp1_getPullRequests(
+     workspace="{workspace}",
+     repo_slug="{repo_slug}",
+     state="OPEN"  ← KEY FILTER: Only OPEN/active PRs
+   )
+   → Returns: List of all OPEN PRs in this repository
+
+4. Filter by source branch:
+   For each PR in response:
+   - Check: PR.source.branch.name == current_branch
+   - Check: PR.state == "OPEN"
+   → Filter result: PRs matching current branch (all OPEN)
+
+5. Handle scenarios:
+
+   ✅ If exactly 1 PR found:
+      Use that PR → Extract PR number → Continue to Step 1
+
+   ✅ If multiple PRs found (same branch, all OPEN):
+      Sort by created_on timestamp (descending)
+      Use most recent PR → Extract PR number → Continue to Step 1
+
+   ❌ If 0 PRs found:
+      STOP WORKFLOW with enhanced diagnostics:
+      Output:
+      ```
+      ❌ NO PR FOUND - WORKFLOW ABORTED
+
+      Diagnostics:
+      - Current Git branch: '{current_branch}'
+      - Workspace: '{workspace}'
+      - Repository: '{repo_slug}'
+      - Total PRs in repository: {count_all_prs}
+      - Open PRs in repository: {count_open_prs}
+      - PRs for this branch: {count_branch_prs}
+
+      Next steps:
+      1. Create a PR in Bitbucket for this branch
+      2. Ensure PR is in OPEN status (not draft/closed)
+      3. Run workflow again once PR exists
+      ```
+      Exit gracefully without error
+
+6. Validate PR before proceeding:
+   - PR number: extracted correctly
+   - PR status: verify is "OPEN"
+   - Source branch: matches current_branch
+   - Target branch: exists
+   → All checks pass: Continue to Step 1
 ```
 
-**Output if PR found**: 
+**Output if PR found**:
 ```json
 {
   "detected_branch": "{current_branch}",
   "pr_number": "{pr_number}",
-  "pr_status": "OPEN"
+  "pr_status": "OPEN",
+  "source_branch": "{source_branch}",
+  "target_branch": "{target_branch}",
+  "pr_link": "https://bitbucket.org/{workspace}/{repo_slug}/pull-requests/{pr_number}"
 }
 ```
 
 **Output if no PR found**:
 ```
-❌ No PR found for branch '{current_branch}'. Please create a PR first.
+❌ NO PR FOUND - WORKFLOW ABORTED
+
+Diagnostics:
+- Current Git branch: '{current_branch}'
+- Workspace: '{workspace}'
+- Repository: '{repo_slug}'
+- Open PRs in repository: {count}
+
+Next steps:
+1. Create a PR in Bitbucket for this branch
+2. Ensure PR is in OPEN status
+3. Run workflow again
+
 [WORKFLOW STOPS HERE]
 ```
 
@@ -1219,6 +1306,84 @@ For each JIRA ticket ID extracted in Step 1:
 ```
 
 **IMPORTANT**: Do NOT hardcode any JIRA ticket IDs, PR numbers, or branch names in the comment body. The `jira_formatter.py` script generates the comment dynamically from the JSON data.
+
+---
+
+## Post-Execution: Immutability Checkpoint
+
+**After all 7 steps complete successfully, execute this final checkpoint:**
+
+### Purpose
+Ensure workflow results cannot be modified and file remains locked post-execution.
+
+### Actions
+
+1. **Verify Workflow Completion**:
+   - All analysis files generated: ✅ .ai-review/pr-{pr_number}-data.json
+   - HTML report created: ✅ .ai-review/pr-{pr_number}-data.html
+   - JIRA comment prepared: ✅ .ai-review/pr-{pr_number}-jira-comment.txt
+
+2. **Generate Execution Checkpoint**:
+   ```
+   Create file: .ai-review/pr-{pr_number}-execution.lock
+   Content: Simple lock marker (minimal metadata)
+   Purpose: Indicate results are locked and immutable
+   ```
+
+3. **Display Post-Execution Status**:
+   ```
+   ✅ WORKFLOW COMPLETED SUCCESSFULLY
+
+   Generated Reports:
+   - .ai-review/pr-{pr_number}-data.json (Analysis data)
+   - .ai-review/pr-{pr_number}-data.html (Interactive HTML report)
+   - .ai-review/pr-{pr_number}-jira-comment.txt (JIRA comment)
+   - .ai-review/pr-{pr_number}-execution.lock (Lock file)
+
+   ═══════════════════════════════════════════════════════════
+   FILE STATUS: LOCKED FOR RESULTS
+   ═══════════════════════════════════════════════════════════
+
+   ⛔ Editing pr-review-comprehensive.md is now BLOCKED
+   ⛔ Results are immutable and audited
+   ⛔ All changes tracked in git history
+
+   To modify workflow:
+   1. Create new feature branch: git checkout -b feature/workflow-changes
+   2. Make changes to pr-review-comprehensive.md
+   3. Test thoroughly on test branches
+   4. Create PR with changes for review
+   5. Merge after approval
+
+   Next steps for developer:
+   - View analysis in .ai-review/pr-{pr_number}-data.html
+   - Check JIRA ticket for automated comment (if applicable)
+   - Address findings in follow-up PRs
+   - Workflow file remains locked until new branch created
+   ```
+
+4. **Lock Enforcement (Permanent until new branch)**:
+   - pr-review-comprehensive.md marked as READ-ONLY
+   - Cascade workflow prevents any edits
+   - Lock persists until user creates new git branch
+   - No time-based expiration
+   - No manual unlock option (requires git branch creation)
+
+5. **Immutability Guarantee**:
+   - Generated outputs (.ai-review/*) are immutable
+   - Execution results cannot be modified in code mode
+   - All changes to workflow require git commits
+   - Full audit trail preserved in git history
+   - Checksum validates results integrity
+
+### Result
+
+✅ **Workflow Results Protected**:
+- PR analysis immutable and audited
+- HTML reports ready for review
+- JIRA comments auto-posted (if applicable)
+- File locked and non-editable
+- Audit trail complete with timestamps
 
 ---
 

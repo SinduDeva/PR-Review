@@ -113,33 +113,271 @@ If no JIRA tickets found, set `jira_tickets: []` and add `jira_warning` field. R
 
 ---
 
-### Step 2: Get Changed Files in PR (PR Changes Only)
+### Step 2: Get Changed Files in PR (PR Changes Only) - WITH COMPLETE PAGINATION
 
-**Goal**: Build complete list of ONLY files changed in this PR with their diffs
+**Goal**: Build COMPLETE list of ALL files changed in this PR with their diffs
+
+**CRITICAL**: This step now implements full pagination to ensure ALL files are retrieved, regardless of PR size.
 
 **IMPORTANT**: Analyze ONLY files modified in this PR, NOT the entire codebase.
 
-**Primary Method** - Try Bitbucket diffstat:
+**Primary Method** - Bitbucket diffstat with pagination:
+
 ```
-Call: mcp1_getPullRequestDiffStat(pr_number)
-If success: Extract file paths and stats (additions, deletions)
-Result: List of changed files with modification counts
+Function: fetch_all_pr_files_diffstat(pr_number)
+
+  # Initialize pagination state
+  all_files = []
+  current_page = 1
+  max_pages = 100          # Safety limit: 10,000 files max
+  pagelen = 100            # Maximum items per page
+  has_more_pages = true
+  total_api_calls = []
+  warnings = []
+
+  While has_more_pages AND current_page <= max_pages:
+
+    # Call Bitbucket MCP tool with pagination parameters
+    Try:
+      result = mcp1_getPullRequestDiffStat(
+        pr_number=pr_number,
+        pagelen=pagelen,
+        page=current_page
+      )
+    Catch Error/404:
+      If current_page == 1:
+        Log: "Diffstat failed, falling back to unified diff method"
+        Return FALLBACK_TO_UNIFIED_DIFF
+      Else:
+        Log: "Error on page {current_page}, stopping with {len(all_files)} files"
+        Add to warnings: "Pagination interrupted on page {current_page}"
+        Break
+
+    # Extract files from response (handle both wrapped and unwrapped)
+    files_on_page = result.values OR result
+
+    # Validate page result
+    If files_on_page is empty:
+      Log: "Empty page {current_page} returned, stopping"
+      Break
+
+    # Accumulate files
+    all_files.extend(files_on_page)
+
+    # Record API call for audit trail
+    total_api_calls.append({
+      "page": current_page,
+      "items_returned": len(files_on_page),
+      "timestamp": current_timestamp()
+    })
+
+    # Log progress (especially for large PRs)
+    Log: "Page {current_page}: +{len(files_on_page)} files (total: {len(all_files)})"
+
+    # Check for next page
+    If result.next exists AND result.next is not null:
+      current_page += 1
+      has_more_pages = true
+    Else:
+      has_more_pages = false
+      Log: "✓ All files retrieved: {len(all_files)} total files"
+      Break
+
+  # Safety check for extremely large PRs
+  If current_page > max_pages:
+    Log: "⚠️ WARNING: Hit pagination limit at {max_pages} pages"
+    Log: "Total files retrieved: {len(all_files)} (may be incomplete)"
+    Add to warnings: "Pagination limit reached - PR may have more files"
+    truncated = true
+  Else:
+    truncated = false
+
+  # Validate completeness using API metadata
+  If result.size exists:
+    expected_total = result.size
+    If len(all_files) < expected_total:
+      Log: "⚠️ WARNING: Expected {expected_total} files, but only retrieved {len(all_files)}"
+      Add to warnings: "Expected {expected_total} files, got {len(all_files)}"
+
+  # Check for suspicious round numbers (may indicate truncation)
+  If len(all_files) in [20, 50, 100, 500, 1000]:
+    Log: "⚠️ Retrieved exactly {len(all_files)} files - verifying completeness"
+    Add to warnings: "Round number of files detected - verify completeness"
+
+  # Deduplicate files (in case pagination has bugs)
+  unique_files = deduplicate_by_path(all_files)
+  If len(unique_files) < len(all_files):
+    duplicates_removed = len(all_files) - len(unique_files)
+    Log: "⚠️ Removed {duplicates_removed} duplicate files"
+    Add to warnings: "Removed {duplicates_removed} duplicates"
+    all_files = unique_files
+
+  # Build pagination metadata for reporting
+  pagination_metadata = {
+    "method": "diffstat",
+    "pages_fetched": current_page,
+    "total_items_retrieved": len(all_files),
+    "items_per_page": pagelen,
+    "truncated": truncated,
+    "max_pages_reached": current_page > max_pages,
+    "warnings": warnings,
+    "api_calls_made": total_api_calls
+  }
+
+  Return {
+    "files": all_files,
+    "metadata": pagination_metadata
+  }
 ```
 
-**Fallback Method** - Parse unified diff (when diffstat returns 404):
+**Fallback Method** - Parse unified diff with pagination support:
+
 ```
-1. If mcp1_getPullRequestDiffStat returns 404/Not Found (common for large PRs), immediately switch to unified diff
-   - Call: mcp1_getPullRequestDiff(pr_number)
-   - Save the diff output path provided in MCP logs (Temp file path)
-2. Parse diff content:
-   - Split on "diff --git a/... b/..." markers
-   - Extract file paths and content
-   - Track additions / deletions manually by counting lines with leading '+' / '-'
-3. Build file change objects with full diffs
-4. Proceed to Step 3 with this reconstructed file list (mark source="unified diff" in logs)
+Function: fetch_all_pr_files_unified_diff(pr_number)
+
+  # First, try to get unified diff
+  Try:
+    result = mcp1_getPullRequestDiff(pr_number)
+  Catch Error:
+    Log: "ERROR: Both diffstat and unified diff methods failed"
+    Raise error
+
+  # Check if unified diff is also paginated
+  If result has "next" field OR result has "pagelen" field:
+    Log: "Unified diff is paginated, fetching all pages"
+
+    all_diff_content = ""
+    current_page = 1
+    has_more_pages = true
+
+    While has_more_pages AND current_page <= 100:
+      result = mcp1_getPullRequestDiff(
+        pr_number=pr_number,
+        page=current_page,
+        pagelen=100
+      )
+
+      # Extract diff content
+      page_content = result.content OR read_from_temp_file(result.temp_path)
+      all_diff_content += page_content
+
+      Log: "Unified diff page {current_page}: {len(page_content)} bytes"
+
+      # Check for next page
+      If result.next exists:
+        current_page += 1
+      Else:
+        has_more_pages = false
+        Break
+  Else:
+    # Single call returns complete diff
+    all_diff_content = result.content OR read_from_temp_file(result.temp_path)
+
+  # Parse unified diff format
+  files = parse_unified_diff(all_diff_content)
+
+  # Validation
+  If len(files) in [50, 100, 500]:
+    Log: "⚠️ Unified diff returned {len(files)} files (round number - verify completeness)"
+
+  # Save diff content for debugging
+  Save all_diff_content to: .ai-review/pr-{pr_number}-full-diff.txt
+
+  Log: "✓ Parsed {len(files)} files from unified diff"
+
+  pagination_metadata = {
+    "method": "unified_diff",
+    "pages_fetched": current_page,
+    "total_items_retrieved": len(files),
+    "truncated": false,
+    "warnings": []
+  }
+
+  Return {
+    "files": files,
+    "metadata": pagination_metadata
+  }
 ```
 
-**Output**: Array of ONLY changed files in this PR
+**Helper Function: parse_unified_diff(diff_content)**
+
+```
+Function: parse_unified_diff(diff_content)
+
+  # Split on diff markers
+  file_blocks = split(diff_content, pattern=r"diff --git a/")
+
+  files = []
+
+  For each block in file_blocks:
+    If block is empty:
+      Continue
+
+    # Extract file path
+    Match pattern: r"diff --git a/(.*?) b/(.*?)\\n"
+    If match found:
+      old_path = match.group(1)
+      new_path = match.group(2)
+      path = new_path  # Use new path (handles renames)
+    Else:
+      Continue
+
+    # Count additions and deletions
+    additions = count lines starting with "+" (excluding "+++")
+    deletions = count lines starting with "-" (excluding "---")
+
+    # Determine change type
+    If "new file mode" in block:
+      change_type = "ADD"
+    Elif "deleted file mode" in block:
+      change_type = "DELETE"
+    Elif "rename from" in block:
+      change_type = "RENAME"
+    Else:
+      change_type = "MODIFY"
+
+    # Build file object
+    file_obj = {
+      "path": path,
+      "additions": additions,
+      "deletions": deletions,
+      "type": change_type,
+      "diff": block
+    }
+
+    files.append(file_obj)
+
+  Return files
+```
+
+**Helper Function: deduplicate_by_path(files)**
+
+```
+Function: deduplicate_by_path(files)
+
+  seen_paths = {}
+
+  For each file in files:
+    path = file.path
+
+    If path not in seen_paths:
+      seen_paths[path] = file
+    Else:
+      # Duplicate found - keep the one with more info
+      existing = seen_paths[path]
+
+      # Prefer entry with larger diff or more changes
+      existing_size = len(existing.diff OR "") + existing.additions + existing.deletions
+      current_size = len(file.diff OR "") + file.additions + file.deletions
+
+      If current_size > existing_size:
+        seen_paths[path] = file
+
+  Return list(seen_paths.values())
+```
+
+**Output Format**:
+
 ```json
 {
   "files": [
@@ -151,20 +389,42 @@ Result: List of changed files with modification counts
       "diff": "... full diff content ..."
     },
     {
-      "path": "src/main/resources/application.yml",
-      "additions": 3,
-      "deletions": 1,
+      "path": "src/main/java/com/example/controller/DataController.java",
+      "additions": 23,
+      "deletions": 5,
       "type": "MODIFY",
       "diff": "... full diff content ..."
     }
+    // ... all 156 files
   ],
-  "total_files": 12,
+  "total_files": 156,
+  "pagination_metadata": {
+    "method": "diffstat",
+    "pages_fetched": 2,
+    "total_items_retrieved": 156,
+    "items_per_page": 100,
+    "truncated": false,
+    "max_pages_reached": false,
+    "warnings": [],
+    "api_calls_made": [
+      {
+        "page": 1,
+        "items_returned": 100,
+        "timestamp": "2026-02-13T10:30:15Z"
+      },
+      {
+        "page": 2,
+        "items_returned": 56,
+        "timestamp": "2026-02-13T10:30:18Z"
+      }
+    ]
+  },
   "files_by_type": {
-    "java": 8,
-    "xml": 2,
-    "yaml": 1,
-    "sql": 1,
-    "test": 0
+    "java": 87,
+    "xml": 15,
+    "yaml": 3,
+    "sql": 12,
+    "test": 39
   }
 }
 ```
@@ -918,6 +1178,23 @@ Deduplicate and prioritize by:
     "workflow_end_time": "<timestamp when Step 6 completes>",
     "execution_time_seconds": "<calculated difference>",
     "review_id": "PR-<pr_number>-<YYYYMMDD-HHMMSS>"
+  },
+
+  "pagination_metadata": {
+    "method": "<diffstat|unified_diff from Step 2>",
+    "pages_fetched": "<number of API pages retrieved>",
+    "total_items_retrieved": "<total files fetched>",
+    "items_per_page": "<page size used>",
+    "truncated": "<true|false - if hit max_pages limit>",
+    "max_pages_reached": "<true|false - if exceeded safety limit>",
+    "warnings": ["<array of pagination warnings>"],
+    "api_calls_made": [
+      {
+        "page": "<page number>",
+        "items_returned": "<items in this page>",
+        "timestamp": "<ISO timestamp>"
+      }
+    ]
   },
 
   "summary": {

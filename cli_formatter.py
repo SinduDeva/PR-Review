@@ -53,6 +53,44 @@ def print_summary(summary):
     
     print("\n" + "━" * 70)
 
+def print_pagination_info(pagination_metadata):
+    """Print file retrieval pagination information"""
+    if not pagination_metadata:
+        return
+
+    print(f"\n{Colors.BOLD}📊 FILE RETRIEVAL{Colors.END}\n")
+
+    method = pagination_metadata.get('method', 'unknown')
+    total = pagination_metadata.get('total_items_retrieved', 0)
+    pages = pagination_metadata.get('pages_fetched', 1)
+    truncated = pagination_metadata.get('truncated', False)
+    max_pages_reached = pagination_metadata.get('max_pages_reached', False)
+
+    print(f"  Method:           {method}")
+    print(f"  Files Retrieved:  {total}")
+    print(f"  API Pages Fetched: {pages}")
+
+    if truncated or max_pages_reached:
+        print(f"\n  {Colors.RED}⚠️ WARNING: Pagination limit reached{Colors.END}")
+        print(f"  {Colors.RED}Results may be incomplete - manual verification recommended{Colors.END}")
+
+    warnings = pagination_metadata.get('warnings', [])
+    if warnings:
+        print(f"\n  {Colors.YELLOW}Warnings:{Colors.END}")
+        for warning in warnings:
+            print(f"  → {warning}")
+
+    # Show API call breakdown if multiple pages
+    api_calls = pagination_metadata.get('api_calls_made', [])
+    if len(api_calls) > 1:
+        print(f"\n  API Call Breakdown:")
+        for call in api_calls[:5]:  # Show first 5
+            print(f"  → Page {call['page']}: {call['items_returned']} items")
+        if len(api_calls) > 5:
+            print(f"  → ... and {len(api_calls) - 5} more pages")
+
+    print("\n" + "━" * 70)
+
 def print_critical_findings(findings):
     """Print critical and high severity findings"""
     critical_findings = [f for f in findings if f['severity'] in ['CRITICAL', 'HIGH']]
@@ -237,6 +275,7 @@ def format_cli_output(data_file):
     
     # Print each section
     print_header()
+    print_pagination_info(data.get('pagination_metadata'))
     print_summary(data['summary'])
     print_critical_findings(data['findings'])
     print_spring_validation(data['spring_boot_validation'])

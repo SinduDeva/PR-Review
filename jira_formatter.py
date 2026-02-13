@@ -48,7 +48,16 @@ def format_jira_comment(data):
     comment.append("")
     comment.append("----")
     comment.append("")
-    
+
+    # Add large PR note if pagination was used
+    pagination = data.get('pagination_metadata', {})
+    if pagination.get('pages_fetched', 1) > 1:
+        comment.append("*Note:* Large PR analyzed across {} API pages ({} files total)".format(
+            pagination['pages_fetched'],
+            pagination['total_items_retrieved']
+        ))
+        comment.append("")
+
     # Critical Issues
     critical_findings = [f for f in findings if f['severity'] in ['CRITICAL', 'HIGH']]
     

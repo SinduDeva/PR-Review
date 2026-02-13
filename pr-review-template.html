@@ -319,6 +319,77 @@
             </div>
         </div>
 
+        <!-- Pagination Metadata Section -->
+        {% if pagination_metadata %}
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-database"></i> File Retrieval Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <strong>Method:</strong>
+                        <span class="badge bg-primary">{{ pagination_metadata.method }}</span>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Total Files:</strong>
+                        <span class="badge bg-success">{{ pagination_metadata.total_items_retrieved }}</span>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>API Pages Fetched:</strong>
+                        <span class="badge bg-secondary">{{ pagination_metadata.pages_fetched }}</span>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Items per Page:</strong>
+                        <span class="badge bg-secondary">{{ pagination_metadata.items_per_page }}</span>
+                    </div>
+                </div>
+
+                {% if pagination_metadata.truncated or pagination_metadata.max_pages_reached %}
+                <div class="alert alert-warning mt-3 mb-0">
+                    <strong><i class="fas fa-exclamation-triangle"></i> Warning:</strong> Pagination limit reached. Results may be incomplete.
+                    Please review the PR manually to verify all files were analyzed.
+                </div>
+                {% endif %}
+
+                {% if pagination_metadata.warnings %}
+                <div class="alert alert-warning mt-3 mb-0">
+                    <strong><i class="fas fa-exclamation-triangle"></i> Pagination Warnings:</strong>
+                    <ul class="mb-0 mt-2">
+                    {% for warning in pagination_metadata.warnings %}
+                        <li>{{ warning }}</li>
+                    {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                {% if pagination_metadata.api_calls_made and pagination_metadata.api_calls_made|length > 1 %}
+                <details class="mt-3">
+                    <summary><strong>API Call Details</strong> ({{ pagination_metadata.api_calls_made|length }} calls)</summary>
+                    <table class="table table-sm mt-2">
+                        <thead>
+                            <tr>
+                                <th>Page</th>
+                                <th>Items Returned</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for call in pagination_metadata.api_calls_made %}
+                            <tr>
+                                <td>{{ call.page }}</td>
+                                <td>{{ call.items_returned }}</td>
+                                <td>{{ call.timestamp }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </details>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Impact Analysis Section -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-dark text-white">

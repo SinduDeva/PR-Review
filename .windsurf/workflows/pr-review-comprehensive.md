@@ -3,74 +3,116 @@ auto_execution_mode: 3
 description: Comprehensive PR Code Review with Token-Optimized Rich HTML Report & JIRA Integration
 ---
 
-⚠️ **CODE MODE LOCK ACTIVE - EXECUTION & POST-EXECUTION**
+## CODE MODE LOCK — Workflow Integrity Protection
 
-This workflow is IMMUTABLE in code mode DURING execution and AFTER results are generated.
-The following restrictions are ENFORCED at all times:
+**Purpose**: Prevent workflow file modifications during execution to ensure analysis integrity.
 
-✅ **ALLOWED**:
-- Execute the entire workflow end-to-end
-- Read all step definitions and instructions
-- View generated reports (.ai-review/ outputs)
-- Review console output in Windsurf
-- View execution checkpoint (.ai-review/pr-{number}-execution.lock)
-- Review git history of changes
+**What is LOCKED**:
+- ❌ Editing `pr-review-comprehensive.md` during execution
+- ❌ Modifying workflow steps mid-run
+- ❌ Changing analysis parameters after execution starts
 
-❌ **NOT ALLOWED - DURING EXECUTION**:
-- Editing pr-review-comprehensive.md during execution
-- Modifying ANY step definitions mid-run
-- Changing workflow parameters mid-run
-- Skipping or reordering steps
-- Pausing and resuming with modifications
-- Canceling then editing and re-running
+**What is NOT LOCKED** (✅ Always Allowed):
+- ✅ **Re-running workflow on same PR** (unlimited times, no cooldown)
+- ✅ **Viewing generated reports** (read-only access)
+- ✅ **Running workflow on different PRs** (completely independent)
+- ✅ **Overwriting previous reports** (OVERWRITE MODE enabled by default)
 
-❌ **NOT ALLOWED - AFTER EXECUTION COMPLETES (Post-Execution Lock)**:
-- Editing pr-review-comprehensive.md after workflow finishes
-- Modifying any workflow steps
-- Editing or deleting generated reports
-- Re-running workflow on same PR with edited workflow
-- Disabling the execution lock
-- Removing the execution checkpoint file
+**Lock Behavior**:
 
-⚠️ **EXCEPTION**: To modify workflow after execution:
-- Create NEW feature branch: `git checkout -b feature/changes`
-- Lock automatically resets on new branch
-- Make changes, test, create PR for review
-- Merge after approval
-- Old results remain locked in original branch
+1. **Before Execution**: Hash workflow file to detect modifications
+2. **During Execution**: Block any attempts to edit workflow file
+3. **After Execution**: Reports are immutable (read-only), workflow file is locked from editing
+4. **Re-Execution**: ✅ ALLOWED - Just run workflow again, reports will be overwritten
+
+**Re-Execution Flow**:
+```
+User runs workflow → Reports generated → "COMPLETE"
+User runs workflow again → Pre-check validates file unchanged → ✅ Proceeds
+Reports overwritten → New analysis complete → "COMPLETE"
+User runs workflow 3rd time → ✅ Proceeds again
+... (unlimited re-runs allowed)
+```
+
+**File Modification Flow**:
+```
+User runs workflow → Reports generated → "COMPLETE"
+User edits pr-review-comprehensive.md → ❌ Lock detects change
+User tries to run workflow → ❌ BLOCKED with error:
+  "Cannot execute: workflow file was modified since last run.
+   To re-run analysis, restore original file or create new branch."
+```
+
+**Clear Distinction**:
+- **"Locked from editing"** = You cannot modify the workflow definition
+- **"Locked from re-running"** = ❌ FALSE - You can ALWAYS re-run (this is NOT locked)
+
+**User-Friendly Messages**:
+```
+✅ First run:    "Starting PR #1288 analysis..."
+✅ Re-run 1:     "Re-running PR #1288 analysis (run 2)"
+✅ Re-run 2:     "Re-running PR #1288 analysis (run 3)"
+✅ Re-run N:     "Re-running PR #1288 analysis (run N)"
+
+❌ If modified:  "Cannot execute: workflow file was modified.
+                 Restore original to continue, or create new branch for changes."
+```
+
+**To Reset Lock** (if you want to modify workflow):
+1. Create new feature branch
+2. Lock automatically resets on new branch
+3. Make changes, test, commit
+4. Original branch reports remain unchanged
 
 ---
 
 ## Pre-Execution Validation
 
-**BEFORE any workflow steps run**, cascade executes this validation:
+**BEFORE any workflow steps run**, validate workflow integrity:
 
-1. **Immutability Check**: Confirm this file matches original (unchanged)
-2. **No-Edit Detection**: Reject if any file modification attempts detected
-3. **Atomic Mode**: Set workflow to "no interruption" mode
-4. **Lock Confirmation**: Display lock status to user
-5. **Post-Execution Lock Warning**: Inform user results will be locked after completion
+1. **File Hash Check**: Confirm this file matches original (unchanged)
+2. **Modification Detection**: Reject if workflow file was modified
+3. **Execution Mode**: Set workflow to "no interruption" mode
+4. **Lock Status Display**: Show whether this is first run or re-run
+5. **Re-Execution Notice**: Inform user that re-runs are always allowed
 
-**If validation FAILS**:
+**If validation FAILS** (workflow file was modified):
 ```
 ❌ WORKFLOW ABORTED
-Reason: File modification detected or workflow integrity compromised
-Action: Do NOT modify this workflow
-Restart workflow WITHOUT making changes
+Reason: Workflow file was modified since last execution
+Action: To re-run analysis, restore original file
+Alternative: Create new branch to test modifications
+
+You cannot execute a modified workflow file to ensure analysis integrity.
 ```
 
-**If validation PASSES**:
+**If validation PASSES** (first run):
 ```
-✅ CODE MODE LOCK VERIFIED
-Status: IMMUTABLE (during execution)
+✅ Starting PR Analysis (First Run)
+Status: Workflow file validated
 Mode: EXECUTE FULL WORKFLOW
-Post-Execution: Results will be LOCKED after completion
+Re-Execution: ✅ Enabled - you can re-run this workflow anytime
 
-ℹ️ NOTICE: After workflow completes:
-  - Generated results are IMMUTABLE
-  - This workflow file will be LOCKED
-  - To modify: create new feature branch
-  - Original results remain preserved
+ℹ️ NOTICE:
+  - Generated reports can be regenerated by re-running
+  - Workflow file is protected from edits
+  - To modify workflow: create new feature branch
+  - Re-running is always allowed (unlimited times)
+
+Proceeding with all 7 analysis steps...
+```
+
+**If validation PASSES** (re-run):
+```
+✅ Re-Running PR Analysis (Run #{N})
+Status: Workflow file unchanged ✓
+Mode: EXECUTE FULL WORKFLOW
+Reports: Will be overwritten with latest analysis
+
+ℹ️ RE-EXECUTION NOTICE:
+  - Previous reports will be replaced
+  - No cooldown or restrictions apply
+  - Re-runs are unlimited and always allowed
 
 Proceeding with all 7 analysis steps...
 ```
@@ -1633,14 +1675,29 @@ Deduplicate and prioritize by:
 2. Save the JSON from Step 6b to file:
    Write the complete JSON object to: .ai-review/pr-{pr_number}-data.json
 
-   ⚙️ OVERWRITE MODE: If the file already exists, replace it completely with the
-   latest analysis. This ensures the workflow is re-executable - you can review
-   the same PR multiple times and reports will always reflect current state.
+   ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
 
-   Note: Previous reports are automatically replaced:
-   - .ai-review/pr-{pr_number}-data.json (overwritten)
-   - .ai-review/pr-{pr_number}-data.html (regenerated from JSON)
-   - .ai-review/pr-{pr_number}-jira-comment.txt (regenerated from JSON)
+   **Purpose**: Allow workflow to be run multiple times on the same PR without conflicts.
+
+   **Behavior**:
+   - ✅ **First run**: Creates new report files
+   - ✅ **Subsequent runs**: Overwrites existing files with latest analysis
+   - ✅ **No file conflicts**: Old reports are replaced, not appended
+   - ✅ **No cooldown**: Re-run as many times as needed, immediately
+
+   **Files Always Overwritten**:
+   - .ai-review/pr-{pr_number}-data.json ← Latest analysis data
+   - .ai-review/pr-{pr_number}-data.html ← Regenerated from JSON
+   - .ai-review/pr-{pr_number}-jira-comment.txt ← Regenerated from JSON
+
+   **Use Cases for Re-Execution**:
+   1. **PR updated with new commits** → Re-run to analyze latest changes
+   2. **Want fresh analysis** → Re-run to get current state
+   3. **Reports corrupted** → Re-run to regenerate
+   4. **Testing workflow** → Re-run as many times as needed
+
+   **Important**: This is NOT destructive. Old reports are simply replaced with new ones.
+   The workflow is designed to be re-executable by default.
 
 3. Generate HTML report (ZERO LLM tokens — uses external template):
    python .windsurf/workflows/templates/generate-html.py .ai-review/pr-{pr_number}-data.json
@@ -1979,15 +2036,22 @@ Solution:
 
 ```
 Workflow Name:    PR Code Review - Comprehensive Analysis
-Version:          2.1.0 (Enhanced)
+Version:          2.2.0 (Re-Execution Fix)
 Status:           PRODUCTION READY
-Lock Status:      IMMUTABLE (code mode)
-Execution Mode:   Atomic (no step skipping)
-Last Updated:     2026-02-13
+Lock Status:      Workflow file protected from edits | Re-runs always allowed
+Execution Mode:   Atomic (no step skipping) | Re-executable (unlimited times)
+Last Updated:     2026-02-14
 Maintainer:       Engineering Team
 Repository:       SinduDeva/PR-Review
 Branch:           claude/review-latest-plan-BlUMl
 ```
+
+**Enhancements in 2.2.0:**
+- **CRITICAL FIX**: Clarified re-execution messaging - users can run unlimited times
+- Removed confusing "LOCKED" language that blocked re-runs
+- Updated CODE MODE LOCK to distinguish "locked from editing" vs "locked from re-running"
+- Enhanced OVERWRITE MODE documentation with re-execution use cases
+- Clear pre-execution validation messages for first run vs re-run
 
 **Enhancements in 2.1.0:**
 - Git-first file detection (60x faster)

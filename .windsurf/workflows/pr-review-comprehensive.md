@@ -1712,9 +1712,34 @@ Deduplicate and prioritize by:
 5. Print CLI summary:
    python .windsurf/workflows/templates/cli_formatter.py .ai-review/pr-{pr_number}-data.json
 
-6. Open HTML report in browser:
-   Invoke-Item .ai-review/pr-{pr_number}-data.html   # Windows
-   open .ai-review/pr-{pr_number}-data.html           # macOS
+6. Open HTML report in browser automatically:
+
+   # Cross-platform browser opening with Python
+   python -c "
+import platform
+import subprocess
+import sys
+
+html_file = '.ai-review/pr-{pr_number}-data.html'
+
+try:
+    if platform.system() == 'Windows':
+        subprocess.run(['cmd', '/c', 'start', '', html_file], shell=True)
+    elif platform.system() == 'Darwin':  # macOS
+        subprocess.run(['open', html_file])
+    else:  # Linux
+        subprocess.run(['xdg-open', html_file])
+    print(f'✅ HTML report opened in browser: {html_file}')
+except Exception as e:
+    print(f'⚠️ Could not auto-open browser: {e}')
+    print(f'   Please open manually: {html_file}')
+    sys.exit(0)  # Don't fail workflow if browser open fails
+"
+
+   # Alternative: Manual commands (if Python approach fails)
+   # Windows: Invoke-Item .ai-review/pr-{pr_number}-data.html
+   # macOS:   open .ai-review/pr-{pr_number}-data.html
+   # Linux:   xdg-open .ai-review/pr-{pr_number}-data.html
 ```
 
 **If Python scripts fail**: Fall back to displaying the CLI summary inline from the JSON data. The HTML report is the primary deliverable.

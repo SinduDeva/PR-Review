@@ -231,7 +231,7 @@ def format_jira_comment(data):
     # Links to full reports
     comment.append("h3. 📄 Full Report")
     comment.append("")
-    comment.append(f"[View Complete HTML Report|file://.ai-review/pr-{metadata['pr_number']}-review.html]")
+    comment.append(f"[View Complete HTML Report|file://.ai-review/pr-{metadata['pr_number']}-data.html]")
     comment.append(f"[View JSON Data|file://.ai-review/pr-{metadata['pr_number']}-data.json]")
     comment.append("")
     comment.append("----")

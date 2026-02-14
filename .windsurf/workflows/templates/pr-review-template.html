@@ -481,7 +481,7 @@ Legend:
   [*] = Modified File   [M] = Model   [C] = Controller
   [S] = Service        [R] = Repository   [U] = Utility
 
-{% if impact_analysis and impact_analysis.dependency_graph %}
+{% if impact_analysis and impact_analysis.dependency_graph and impact_analysis.dependency_graph.nodes %}
 Impact Summary:
   ├─ Files Changed: {{ impact_analysis.impact_summary.files_changed }}
   ├─ Direct Impact: {{ impact_analysis.impact_summary.direct_impact }} files
@@ -489,7 +489,6 @@ Impact Summary:
   ├─ Total Affected: {{ impact_analysis.impact_summary.total_affected_files }} files
   └─ Risk Level: {{ impact_analysis.impact_summary.risk_level }}
 
-{% if impact_analysis.dependency_graph.nodes %}
 Modified Files:
 {% for node in impact_analysis.dependency_graph.nodes %}
 {% if node.status == "MODIFIED" %}
@@ -533,11 +532,24 @@ Affected APIs:
 {% endfor %}
 {% endif %}
 
+{% elif impact_analysis and impact_analysis.dependency_graph and impact_analysis.dependency_graph.simplified %}
+ℹ️  SIMPLIFIED VIEW
+
+{{ impact_analysis.dependency_graph.message }}
+
+See the "Files Reviewed" section for the complete list of changed files.
+
 {% else %}
-No dependency graph data available.
-{% endif %}
-{% else %}
-No dependency analysis available.
+⚠️  DEPENDENCY ANALYSIS UNAVAILABLE
+
+The dependency graph could not be generated for this PR.
+
+Possible reasons:
+  • Step 5 (Impact Analysis) was skipped or failed
+  • No file dependencies detected
+  • Analysis timeout or error occurred
+
+Check the JSON file (.ai-review/pr-{{ metadata.pr_number }}-data.json) for details.
 {% endif %}
                     </pre>
                 </div>

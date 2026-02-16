@@ -2,12 +2,17 @@
 """
 Error Handler for PR Review Workflow
 Handles errors gracefully while maintaining JSON format integrity.
+
+NOTE: Uses centralized schema definitions from metadata_constants
 """
 
 import json
 import traceback
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Callable, Any
+
+# Import centralized schema definitions
+from metadata_constants import TopLevelSchema
 
 
 class ErrorHandler:
@@ -109,33 +114,34 @@ class ErrorHandler:
     def ensure_json_valid(self, data: Dict, step: str = "unknown") -> Tuple[Dict, List[str]]:
         """
         Ensure JSON structure is valid, filling missing fields.
+        Uses schema from centralized metadata_constants.
 
         Returns:
             (cleaned_data: Dict, errors: List[str])
         """
         errors = []
 
-        # Check required top-level fields
-        required_fields = {
-            'metadata': {},
-            'summary': {},
-            'findings': [],
-            'files_reviewed': [],
-            'files_skipped': [],
-            'impact_analysis': {},
-            'api_changes': [],
-            'spring_boot_validation': {},
-            'test_coverage': {},
-            'overall_recommendation': {},
-            'execution_status': {}
-        }
+        # Check required top-level fields (from TopLevelSchema)
+        required_fields = TopLevelSchema.SECTION_TYPES
 
-        for field, default_type in required_fields.items():
+        for field, expected_type in required_fields.items():
             if field not in data:
-                data[field] = default_type
+                # Use appropriate default for the type
+                if expected_type == dict:
+                    data[field] = {}
+                elif expected_type == list:
+                    data[field] = []
+                else:
+                    data[field] = None
                 errors.append(f"Missing field '{field}' - using default")
-            elif type(data[field]) != type(default_type):
-                data[field] = default_type
+            elif not isinstance(data[field], expected_type):
+                # Fix type mismatch
+                if expected_type == dict:
+                    data[field] = {}
+                elif expected_type == list:
+                    data[field] = []
+                else:
+                    data[field] = None
                 errors.append(f"Field '{field}' has wrong type - replaced with default")
 
         return data, errors

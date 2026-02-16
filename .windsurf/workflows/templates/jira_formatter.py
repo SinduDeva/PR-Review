@@ -11,15 +11,18 @@ from datetime import datetime
 def format_jira_comment(data):
     """
     Format review data as JIRA-compatible Markdown comment
+    Gracefully handles missing data to ensure comment is always generated.
     """
-    
-    metadata = data['metadata']
-    summary = data['summary']
-    findings = data['findings']
-    spring_validation = data['spring_boot_validation']
-    test_coverage = data['test_coverage']
-    api_changes = data['api_changes']
-    recommendations = data['recommendations']
+
+    # Extract data with safe defaults
+    metadata = data.get('metadata', {})
+    summary = data.get('summary', {})
+    findings = data.get('findings', []) if isinstance(data.get('findings'), list) else []
+    spring_validation = data.get('spring_boot_validation', {})
+    test_coverage = data.get('test_coverage', {})
+    api_changes = data.get('api_changes', []) if isinstance(data.get('api_changes'), list) else []
+    recommendations = data.get('recommendations', []) if isinstance(data.get('recommendations'), list) else []
+    impact_analysis = data.get('impact_analysis', {})
     
     # Build comment sections
     comment = []
@@ -137,32 +140,70 @@ def format_jira_comment(data):
     comment.append("----")
     comment.append("")
     
-    # API Changes
+    # API Impact Analysis
+    affected_apis = impact_analysis.get('affected_apis', []) if isinstance(impact_analysis.get('affected_apis'), list) else []
+    if affected_apis:
+        comment.append("h3. 🔗 Affected APIs")
+        comment.append("")
+        comment.append("|| API Endpoint || Method || Status ||")
+        for api in affected_apis[:15]:  # Show top 15 APIs
+            endpoint = api.get('path', api.get('endpoint', 'Unknown'))
+            method = api.get('method', 'UNKNOWN')
+            status = api.get('status', 'Modified')
+            comment.append(f"| {{{{monospace}}}}{endpoint}{{{{monospace}}}} | {method} | {status} |")
+
+        if len(affected_apis) > 15:
+            comment.append(f"| ... and {len(affected_apis) - 15} more | | |")
+
+        comment.append("")
+        comment.append("----")
+        comment.append("")
+
+    # API Changes (Breaking/Non-Breaking)
     if api_changes:
-        breaking_changes = [c for c in api_changes if c['type'] == 'BREAKING']
-        
+        breaking_changes = [c for c in api_changes if c.get('type') == 'BREAKING']
+        non_breaking_changes = [c for c in api_changes if c.get('type') != 'BREAKING']
+
         if breaking_changes:
-            comment.append("h3. 🔗 API Breaking Changes")
+            comment.append("h3. ⚠️ API Breaking Changes")
             comment.append("")
             comment.append("{warning}Breaking changes detected that will affect API consumers{warning}")
             comment.append("")
-            
-            for change in breaking_changes:
-                comment.append(f"h4. {{{{monospace}}}}{change['endpoint']}{{{{monospace}}}}")
-                comment.append(f"*Change:* {change['change']}")
-                comment.append(f"*Impact Level:* {{color:red}}{change['impact']}{{color}}")
-                comment.append(f"*Backward Compatible:* {'✅ Yes' if change['backward_compatible'] else '❌ No'}")
-                
+
+            for change in breaking_changes[:5]:  # Show top 5
+                comment.append(f"h4. {{{{monospace}}}}{change.get('endpoint', 'Unknown')}{{{{monospace}}}}")
+                comment.append(f"*Change:* {change.get('change', 'API modified')}")
+                comment.append(f"*Impact Level:* {{color:red}}{change.get('impact', 'UNKNOWN')}{{color}}")
+                comment.append(f"*Backward Compatible:* {'✅ Yes' if change.get('backward_compatible', False) else '❌ No'}")
+
                 if change.get('affected_consumers'):
                     comment.append(f"*Affected Consumers:*")
                     for consumer in change['affected_consumers']:
                         comment.append(f"* {{{{monospace}}}}{consumer}{{{{monospace}}}}")
-                
+
                 if change.get('migration_notes'):
                     comment.append(f"*Migration Notes:* {change['migration_notes']}")
-                
+
                 comment.append("")
-            
+
+            if len(breaking_changes) > 5:
+                comment.append(f"_{len(breaking_changes) - 5} more breaking changes in full report_")
+                comment.append("")
+
+            comment.append("----")
+            comment.append("")
+
+        if non_breaking_changes:
+            comment.append("h4. ℹ️ Non-Breaking Changes")
+            comment.append("The following API changes are backward compatible:")
+            comment.append("")
+            for change in non_breaking_changes[:5]:
+                comment.append(f"* {{{{monospace}}}}{change.get('endpoint', 'Unknown')}{{{{monospace}}}}")
+
+            if len(non_breaking_changes) > 5:
+                comment.append(f"* ... and {len(non_breaking_changes) - 5} more")
+
+            comment.append("")
             comment.append("----")
             comment.append("")
     
@@ -245,29 +286,69 @@ def format_jira_comment(data):
     return "\n".join(comment)
 
 def generate_jira_comment_file(data_file, output_file=None):
-    """Generate JIRA comment file from review data"""
-    
-    # Load review data
-    with open(data_file, 'r') as f:
-        data = json.load(f)
-    
-    # Format comment
-    comment = format_jira_comment(data)
-    
+    """Generate JIRA comment file from review data with error handling"""
+
+    try:
+        # Load review data
+        with open(data_file, 'r', encoding='utf-8-sig') as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"❌ Error loading review data: {e}")
+        print("   Using empty data structure for JIRA comment")
+        data = {
+            'metadata': {'pr_number': 'unknown', 'jira_tickets': []},
+            'summary': {},
+            'findings': [],
+            'spring_boot_validation': {},
+            'test_coverage': {},
+            'api_changes': [],
+            'recommendations': []
+        }
+
+    try:
+        # Format comment
+        comment = format_jira_comment(data)
+    except Exception as e:
+        print(f"⚠️ Warning during comment formatting: {e}")
+        # Generate minimal comment
+        comment = f"""h1. PR Code Review Report
+
+An error occurred while formatting the detailed JIRA comment.
+
+Please review the complete analysis in the JSON data file:
+.ai-review/pr-{data.get('metadata', {}).get('pr_number', 'unknown')}-data.json
+
+_Report generated by automated PR Review Workflow_
+"""
+
     # Determine output file
     if not output_file:
-        pr_number = data['metadata']['pr_number']
-        output_file = f".ai-review/pr-{pr_number}-jira-comment.txt"
-    
+        try:
+            pr_number = data.get('metadata', {}).get('pr_number', 'unknown')
+            output_file = f".ai-review/pr-{pr_number}-jira-comment.txt"
+        except Exception:
+            output_file = ".ai-review/pr-unknown-jira-comment.txt"
+
     # Save comment
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(comment)
-    
-    print(f"✅ JIRA comment generated: {output_file}")
-    print(f"📊 Comment length: {len(comment)} characters")
-    print(f"🎫 Ready to post to JIRA tickets: {', '.join(data['metadata'].get('jira_tickets', []))}")
-    
-    return output_file
+    try:
+        import os
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(comment)
+
+        print(f"✅ JIRA comment generated: {output_file}")
+        print(f"📊 Comment length: {len(comment)} characters")
+
+        jira_tickets = data.get('metadata', {}).get('jira_tickets', [])
+        if jira_tickets:
+            print(f"🎫 Ready to post to JIRA tickets: {', '.join(jira_tickets)}")
+        else:
+            print("⚠️ No JIRA tickets found in PR metadata")
+
+        return output_file
+    except Exception as e:
+        print(f"❌ Error saving JIRA comment: {e}")
+        return None
 
 def format_compact_summary(data):
     """Generate compact one-line summary for notifications"""

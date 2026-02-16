@@ -160,6 +160,7 @@ def generate_html_report(data):
     """
     Generate HTML report from JSON data using external template
     ZERO LLM tokens used - pure Python processing
+    Gracefully handles missing data to ensure HTML is always generated.
     """
     template_path = os.path.join(os.path.dirname(__file__), 'pr-review-template.html')
     env = Environment(
@@ -173,26 +174,67 @@ def generate_html_report(data):
     except Exception as exc:
         return f"<html><body><h1>Error loading template: {exc}</h1></body></html>"
 
-    findings = data.get('findings', [])
-    files_reviewed = data.get('files_reviewed', [])
-    files_skipped = data.get('files_skipped', [])
+    # Safely extract data with defaults
+    findings = data.get('findings', []) if isinstance(data.get('findings'), list) else []
+    files_reviewed = data.get('files_reviewed', []) if isinstance(data.get('files_reviewed'), list) else []
+    files_skipped = data.get('files_skipped', []) if isinstance(data.get('files_skipped'), list) else []
 
     critical = [f for f in findings if f.get('severity') == 'CRITICAL']
     high = [f for f in findings if f.get('severity') == 'HIGH']
     medium = [f for f in findings if f.get('severity') in {'MEDIUM', 'LOW'}]
 
+    # Build context with graceful fallbacks
+    try:
+        metadata = build_metadata(data)
+    except Exception as e:
+        print(f"⚠️ Warning building metadata: {e}")
+        metadata = {'pr_number': 'unknown', 'title': 'Unknown PR', 'author': 'Unknown', 'branch': 'Unknown'}
+
+    try:
+        summary = build_summary(files_reviewed, files_skipped, critical, high, medium, data)
+    except Exception as e:
+        print(f"⚠️ Warning building summary: {e}")
+        summary = {
+            'files_validated': len(files_reviewed),
+            'files_excluded': len(files_skipped),
+            'critical_issues': len(critical),
+            'high_issues': len(high),
+            'bugs_detected': len(critical) + len(high)
+        }
+
+    try:
+        impact_analysis = build_impact_analysis(files_reviewed, critical, high, data)
+    except Exception as e:
+        print(f"⚠️ Warning building impact analysis: {e}")
+        impact_analysis = {
+            'summary': {'files_changed': len(files_reviewed), 'risk_level': 'UNKNOWN'},
+            'affected_apis': []
+        }
+
+    try:
+        files_context = build_files_context(files_reviewed, findings)
+    except Exception as e:
+        print(f"⚠️ Warning building files context: {e}")
+        files_context = []
+
+    try:
+        overall_rec = build_overall_recommendation(critical, high, data)
+    except Exception as e:
+        print(f"⚠️ Warning building recommendation: {e}")
+        overall_rec = {'decision': 'UNABLE_TO_REVIEW', 'reason': 'Could not complete review'}
+
     context = {
-        'metadata': build_metadata(data),
-        'summary': build_summary(files_reviewed, files_skipped, critical, high, medium, data),
-        'pagination_metadata': data.get('pagination_metadata'),
-        'execution_status': data.get('execution_status'),
-        'impact_analysis': build_impact_analysis(files_reviewed, critical, high, data),
-        'files_reviewed': build_files_context(files_reviewed, findings),
-        'files_excluded': data.get('files_excluded', [{'path': f.get('path', 'unknown'), 'reason': f.get('reason', 'Skipped by workflow')} for f in files_skipped]),
-        'spring_boot_validation': data.get('spring_boot_validation'),
-        'test_coverage': data.get('test_coverage'),
-        'overall_recommendation': build_overall_recommendation(critical, high, data),
-        'positive_observations': data.get('positive_observations', []),
+        'metadata': metadata,
+        'summary': summary,
+        'pagination_metadata': data.get('pagination_metadata', {}),
+        'execution_status': data.get('execution_status', {}),
+        'impact_analysis': impact_analysis,
+        'files_reviewed': files_context,
+        'files_excluded': [{'path': f.get('path', 'unknown'), 'reason': f.get('reason', 'Skipped by workflow')} for f in files_skipped],
+        'spring_boot_validation': data.get('spring_boot_validation', {}),
+        'test_coverage': data.get('test_coverage', {}),
+        'overall_recommendation': overall_rec,
+        'positive_observations': data.get('positive_observations', []) if isinstance(data.get('positive_observations'), list) else [],
         'ai_summary': data.get('ai_summary', 'AI summary not available'),
         'generated_at': data.get('generated_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')),
     }
@@ -200,33 +242,109 @@ def generate_html_report(data):
     try:
         return template.render(**context)
     except Exception as exc:
-        return f"<html><body><h1>Error rendering template: {escape_html(str(exc))}</h1></body></html>"
+        # If template rendering fails, generate minimal HTML with available data
+        print(f"⚠️ Warning rendering template: {exc}")
+        return generate_fallback_html(context)
+
+def generate_fallback_html(context):
+    """Generate minimal fallback HTML when template rendering fails"""
+    metadata = context.get('metadata', {})
+    summary = context.get('summary', {})
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PR #{metadata.get('pr_number', 'unknown')} - Code Review (Fallback Report)</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+        .header {{ background: #d32f2f; color: white; padding: 20px; border-radius: 5px; }}
+        .section {{ background: white; margin: 20px 0; padding: 20px; border-radius: 5px; }}
+        .warning {{ background: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 10px 0; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
+        th {{ background: #f0f0f0; }}
+        code {{ background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>PR #{metadata.get('pr_number', 'unknown')} - Code Review Report (Fallback)</h1>
+        <p><strong>Title:</strong> {metadata.get('title', 'Unknown')}</p>
+        <p><strong>Branch:</strong> {metadata.get('branch', 'Unknown')}</p>
+    </div>
+
+    <div class="section">
+        <h2>⚠️ Important Notice</h2>
+        <div class="warning">
+            <p><strong>This is a fallback report.</strong> The HTML template could not be fully rendered.</p>
+            <p>Please view the JSON data file for complete analysis details:</p>
+            <p><code>.ai-review/pr-{metadata.get('pr_number', 'unknown')}-data.json</code></p>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Summary</h2>
+        <table>
+            <tr>
+                <th>Metric</th>
+                <th>Value</th>
+            </tr>
+            <tr>
+                <td>Files Validated</td>
+                <td>{summary.get('files_validated', 'N/A')}</td>
+            </tr>
+            <tr>
+                <td>Critical Issues</td>
+                <td><strong style="color: red;">{summary.get('critical_issues', 0)}</strong></td>
+            </tr>
+            <tr>
+                <td>High Priority Issues</td>
+                <td><strong style="color: orange;">{summary.get('high_issues', 0)}</strong></td>
+            </tr>
+            <tr>
+                <td>Test Coverage</td>
+                <td>{summary.get('test_coverage_overall', 'N/A')}</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Generated</h2>
+        <p>{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
+    </div>
+</body>
+</html>"""
+    return html
+
 
 def main():
     """Command line interface for testing"""
     import sys
-    
+
     if len(sys.argv) != 2:
         print("Usage: python generate-html.py <json_data_file>")
         sys.exit(1)
-    
+
     json_file = sys.argv[1]
-    
+
     try:
         with open(json_file, 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
-        
+
         html = generate_html_report(data)
-        
+
         # Output HTML
         output_file = json_file.replace('.json', '.html')
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html)
-        
+
         print(f"HTML report generated: {output_file}")
-        
+
     except Exception as e:
         print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":

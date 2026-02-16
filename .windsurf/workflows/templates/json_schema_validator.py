@@ -2,43 +2,28 @@
 """
 JSON Schema Validator for PR Review Output
 Ensures consistent JSON structure and format across all workflow runs.
+
+NOTE: Metadata schema is centralized in metadata_constants.py
+This validator uses those definitions to ensure consistency.
 """
 
 import json
 from typing import Dict, List, Any, Tuple
 from datetime import datetime
 
-class PRReviewSchema:
-    """Defines the required JSON schema for PR review output"""
+# Import from centralized metadata constants
+from metadata_constants import (
+    MetadataSchema,
+    TopLevelSchema,
+    create_default_json_structure as create_default_structure,
+)
 
-    # Required top-level fields
-    REQUIRED_FIELDS = [
-        'metadata',
-        'summary',
-        'findings',
-        'files_reviewed',
-        'files_skipped',
-        'impact_analysis',
-        'api_changes',
-        'spring_boot_validation',
-        'test_coverage',
-        'overall_recommendation',
-        'execution_status'
-    ]
+# For backward compatibility, reference imported schema
+PRReviewSchema = MetadataSchema
 
-    # Required metadata fields
-    METADATA_REQUIRED = [
-        'pr_number',
-        'title',
-        'author',
-        'reviewer',
-        'source_branch',
-        'target_branch',
-        'branch',
-        'jira_tickets',
-        'review_date',
-        'review_id'
-    ]
+# Additional schema definitions specific to this module
+class OtherSchemaDefinitions:
+    """Schema for non-metadata JSON sections"""
 
     # Summary field requirements
     SUMMARY_REQUIRED = [
@@ -92,6 +77,7 @@ class PRReviewSchema:
 def validate_json_structure(data: Dict) -> Tuple[bool, List[str]]:
     """
     Validate JSON structure against schema.
+    Uses centralized schema definitions from metadata_constants.
 
     Returns:
         (is_valid: bool, errors: List[str])
@@ -101,18 +87,18 @@ def validate_json_structure(data: Dict) -> Tuple[bool, List[str]]:
     if not isinstance(data, dict):
         return False, ["Root must be a JSON object"]
 
-    # Check required top-level fields
-    for field in PRReviewSchema.REQUIRED_FIELDS:
+    # Check required top-level fields (from TopLevelSchema)
+    for field in TopLevelSchema.REQUIRED_SECTIONS:
         if field not in data:
             errors.append(f"Missing required field: {field}")
 
-    # Validate metadata
+    # Validate metadata (from MetadataSchema)
     if 'metadata' in data:
         metadata = data['metadata']
         if not isinstance(metadata, dict):
             errors.append("Field 'metadata' must be an object")
         else:
-            for req_field in PRReviewSchema.METADATA_REQUIRED:
+            for req_field in MetadataSchema.REQUIRED_FIELDS:
                 if req_field not in metadata:
                     errors.append(f"Missing required metadata field: {req_field}")
 
@@ -122,7 +108,7 @@ def validate_json_structure(data: Dict) -> Tuple[bool, List[str]]:
         if not isinstance(summary, dict):
             errors.append("Field 'summary' must be an object")
         else:
-            for req_field in PRReviewSchema.SUMMARY_REQUIRED:
+            for req_field in OtherSchemaDefinitions.SUMMARY_REQUIRED:
                 if req_field not in summary:
                     errors.append(f"Missing required summary field: {req_field}")
 
@@ -136,7 +122,7 @@ def validate_json_structure(data: Dict) -> Tuple[bool, List[str]]:
                 if not isinstance(finding, dict):
                     errors.append(f"Finding {idx} must be an object")
                 else:
-                    for req_field in PRReviewSchema.FINDING_REQUIRED:
+                    for req_field in OtherSchemaDefinitions.FINDING_REQUIRED:
                         if req_field not in finding:
                             errors.append(f"Finding {idx} missing required field: {req_field}")
 
@@ -158,7 +144,7 @@ def validate_json_structure(data: Dict) -> Tuple[bool, List[str]]:
         if not isinstance(impact, dict):
             errors.append("Field 'impact_analysis' must be an object")
         else:
-            for req_field in PRReviewSchema.IMPACT_ANALYSIS_REQUIRED:
+            for req_field in OtherSchemaDefinitions.IMPACT_ANALYSIS_REQUIRED:
                 if req_field not in impact:
                     errors.append(f"Missing required impact_analysis field: {req_field}")
 
@@ -174,138 +160,25 @@ def validate_json_structure(data: Dict) -> Tuple[bool, List[str]]:
         if not isinstance(exec_status, dict):
             errors.append("Field 'execution_status' must be an object")
         else:
-            for req_field in PRReviewSchema.EXECUTION_STATUS_REQUIRED:
+            for req_field in OtherSchemaDefinitions.EXECUTION_STATUS_REQUIRED:
                 if req_field not in exec_status:
                     errors.append(f"Missing required execution_status field: {req_field}")
 
     return len(errors) == 0, errors
 
 
+# NOTE: create_default_json_structure is imported from metadata_constants at the top
+# This function wrapper maintains backward compatibility
+_create_default_json_structure_from_constants = create_default_structure
+
 def create_default_json_structure(pr_number: str, pr_title: str = "Unknown PR") -> Dict:
     """
     Create a default JSON structure with all required fields.
     This ensures consistent output even if analysis steps fail.
+
+    NOTE: Implementation is in metadata_constants.py
     """
-    return {
-        "metadata": {
-            "pr_number": pr_number,
-            "title": pr_title,
-            "author": "Unknown",
-            "reviewer": "Claude AI Assistant",
-            "source_branch": "Unknown",
-            "target_branch": "Unknown",
-            "branch": "Unknown → Unknown",
-            "jira_tickets": [],
-            "jira_warning": None,
-            "review_date": datetime.now().strftime('%Y-%m-%d'),
-            "workflow_start_time": datetime.now().isoformat(),
-            "workflow_end_time": None,
-            "execution_time_seconds": 0,
-            "review_id": f"PR-{pr_number}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        },
-        "pagination_metadata": {
-            "method": "unknown",
-            "pages_fetched": 0,
-            "total_items_retrieved": 0,
-            "items_per_page": 0,
-            "truncated": False,
-            "max_pages_reached": False,
-            "warnings": [],
-            "api_calls_made": []
-        },
-        "summary": {
-            "files_changed": 0,
-            "files_validated": 0,
-            "files_excluded": 0,
-            "lines_added": 0,
-            "lines_deleted": 0,
-            "critical_issues": 0,
-            "high_issues": 0,
-            "medium_issues": 0,
-            "low_issues": 0,
-            "bugs_detected": 0,
-            "test_coverage": "N/A",
-            "test_coverage_overall": "N/A"
-        },
-        "findings": [],
-        "files_reviewed": [],
-        "files_skipped": [],
-        "impact_analysis": {
-            "summary": {
-                "files_changed": 0,
-                "direct_impact": 0,
-                "transitive_impact": 0,
-                "total_affected": 0,
-                "risk_level": "LOW"
-            },
-            "by_layer": {
-                "CONTROLLER": 0,
-                "SERVICE": 0,
-                "REPOSITORY": 0,
-                "MODEL": 0,
-                "UTILITY": 0
-            },
-            "dependency_graph": {
-                "nodes": [],
-                "edges": []
-            },
-            "affected_apis": [],
-            "affected_functionalities": [],
-            "recommendations": []
-        },
-        "api_changes": [],
-        "spring_boot_validation": {
-            "architecture": {
-                "score": 0,
-                "status": "UNKNOWN",
-                "issues": []
-            },
-            "security": {
-                "score": 0,
-                "status": "UNKNOWN",
-                "issues": []
-            },
-            "performance": {
-                "score": 0,
-                "status": "UNKNOWN",
-                "issues": []
-            },
-            "transactions": {
-                "score": 0,
-                "status": "UNKNOWN",
-                "issues": []
-            }
-        },
-        "test_coverage": {
-            "overall": "N/A",
-            "overall_status": "UNKNOWN",
-            "by_type": {
-                "unit": "N/A",
-                "integration": "N/A",
-                "e2e": "N/A"
-            },
-            "gaps": []
-        },
-        "overall_recommendation": {
-            "decision": "UNABLE_TO_REVIEW",
-            "reason": "Analysis could not be completed",
-            "must_fix": [],
-            "should_fix": []
-        },
-        "recommendations": [],
-        "positive_observations": [],
-        "ai_summary": "Unable to generate AI summary at this time",
-        "execution_status": {
-            "overall_status": "incomplete",
-            "total_steps": 7,
-            "successful_steps": 0,
-            "failed_steps": 0,
-            "skipped_steps": 0,
-            "steps": {},
-            "warnings": [],
-            "final_message": "Workflow execution incomplete"
-        }
-    }
+    return _create_default_json_structure_from_constants(pr_number, pr_title)
 
 
 def merge_partial_json(base_json: Dict, new_data: Dict, preserve_existing: bool = True) -> Dict:

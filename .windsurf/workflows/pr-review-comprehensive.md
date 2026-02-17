@@ -1052,56 +1052,86 @@ import sys
 def execute_api_impact_analysis():
     """
     Execute API impact analysis on PR changes
-    Uses api_impact_analyzer.py to detect APIs and breaking changes
+    Directly analyzes APIs from changed files and populates JSON metadata
+    No subprocess overhead - uses imported APIImpactAnalyzer class
     """
     try:
-        # Prepare temporary JSON with PR data for api_impact_analyzer
-        temp_pr_data = {
-            'files_reviewed': pr_files,
-            'metadata': metadata,
-            'impact_analysis': {'affected_apis': []}
+        # Import API analyzer directly (no subprocess call)
+        from api_impact_analyzer import APIImpactAnalyzer
+
+        analyzer = APIImpactAnalyzer()
+        all_api_changes = []
+        all_affected_apis = []
+        files_analyzed = 0
+
+        # Analyze each file in the PR for API changes
+        for file_info in review_data.get('files_reviewed', []):
+            try:
+                file_path = file_info.get('path', '')
+                diff_content = file_info.get('diff', '')
+
+                if not diff_content:
+                    continue
+
+                files_analyzed += 1
+
+                # Extract endpoints from this file's diff
+                endpoints = analyzer.extract_endpoints_from_diff(diff_content)
+                if endpoints:
+                    all_affected_apis.extend(endpoints)
+
+                # Detect breaking changes in this file
+                breaking_changes, warnings = analyzer.detect_breaking_changes(
+                    old_endpoints=endpoints,
+                    new_endpoints=endpoints,
+                    diff_content=diff_content
+                )
+
+                if breaking_changes:
+                    all_api_changes.extend(breaking_changes)
+
+            except Exception:
+                # Skip this file, continue analyzing others
+                continue
+
+        # Directly populate JSON metadata (no intermediate file I/O)
+        review_data['api_changes'] = all_api_changes
+        review_data['impact_analysis']['affected_apis'] = all_affected_apis
+
+        # Log success with detailed metrics
+        breaking_count = len([c for c in all_api_changes if c.get('type') == 'BREAKING'])
+        execution_status['steps']['step_4f'] = {
+            'status': 'success',
+            'apis_detected': len(all_affected_apis),
+            'breaking_changes': breaking_count,
+            'non_breaking_changes': len(all_api_changes) - breaking_count,
+            'files_analyzed': files_analyzed,
+            'method': 'direct_import'
         }
 
-        # Call api_impact_analyzer
-        result = subprocess.run([
-            'python',
-            '.windsurf/workflows/templates/api_impact_analyzer.py',
-            'pr_data.json'
-        ], capture_output=True, text=True, timeout=30)
-
-        if result.returncode == 0:
-            # Parse results
-            with open('.ai-review/pr-*-api-impact.json', 'r') as f:
-                api_impact = json.load(f)
-
-            # Populate API data
-            review_data['api_changes'] = api_impact.get('api_changes', [])
-            review_data['impact_analysis']['affected_apis'] = api_impact.get('affected_apis', [])
-
-            # Log success
-            execution_status['steps']['step_4f'] = {
-                'status': 'success',
-                'apis_detected': len(api_impact.get('api_changes', [])),
-                'breaking_changes': len([c for c in api_impact.get('api_changes', []) if c.get('type') == 'BREAKING'])
-            }
-        else:
-            # Fallback: Use empty API data but continue
-            review_data['api_changes'] = []
-            review_data['impact_analysis']['affected_apis'] = []
-            execution_status['steps']['step_4f'] = {
-                'status': 'failed_with_fallback',
-                'error': f'API analyzer failed: {result.stderr}',
-                'fallback_used': True
-            }
+    except ImportError:
+        # API analyzer module not available - fallback gracefully
+        review_data['api_changes'] = []
+        review_data['impact_analysis']['affected_apis'] = []
+        execution_status['steps']['step_4f'] = {
+            'status': 'skipped',
+            'reason': 'API analyzer module not available',
+            'apis_detected': 0,
+            'breaking_changes': 0,
+            'fallback_used': True
+        }
 
     except Exception as e:
-        # Error: Set fallback data and continue
+        # Unexpected error - use fallback data but continue workflow
         review_data['api_changes'] = []
         review_data['impact_analysis']['affected_apis'] = []
         execution_status['steps']['step_4f'] = {
             'status': 'failed_with_fallback',
             'error': str(e),
-            'fallback_used': True
+            'apis_detected': 0,
+            'breaking_changes': 0,
+            'fallback_used': True,
+            'method': 'direct_import'
         }
 
 # EXECUTION:

@@ -1038,54 +1038,123 @@ VALUES:
 
 ### Step 4f: API Change Impact Analysis (PR Changes Only)
 
-**For API-related files changed in PR** (Controllers, DTOs):
+**Goal**: Analyze API changes from PR to detect breaking changes, affected endpoints, and consumer impacts
+
+**Implementation**:
+```python
+# Step 4f: API Change Impact Analysis
+# Detects breaking API changes and populates api_changes array
+
+import subprocess
+import json
+import sys
+
+def execute_api_impact_analysis():
+    """
+    Execute API impact analysis on PR changes
+    Uses api_impact_analyzer.py to detect APIs and breaking changes
+    """
+    try:
+        # Prepare temporary JSON with PR data for api_impact_analyzer
+        temp_pr_data = {
+            'files_reviewed': pr_files,
+            'metadata': metadata,
+            'impact_analysis': {'affected_apis': []}
+        }
+
+        # Call api_impact_analyzer
+        result = subprocess.run([
+            'python',
+            '.windsurf/workflows/templates/api_impact_analyzer.py',
+            'pr_data.json'
+        ], capture_output=True, text=True, timeout=30)
+
+        if result.returncode == 0:
+            # Parse results
+            with open('.ai-review/pr-*-api-impact.json', 'r') as f:
+                api_impact = json.load(f)
+
+            # Populate API data
+            review_data['api_changes'] = api_impact.get('api_changes', [])
+            review_data['impact_analysis']['affected_apis'] = api_impact.get('affected_apis', [])
+
+            # Log success
+            execution_status['steps']['step_4f'] = {
+                'status': 'success',
+                'apis_detected': len(api_impact.get('api_changes', [])),
+                'breaking_changes': len([c for c in api_impact.get('api_changes', []) if c.get('type') == 'BREAKING'])
+            }
+        else:
+            # Fallback: Use empty API data but continue
+            review_data['api_changes'] = []
+            review_data['impact_analysis']['affected_apis'] = []
+            execution_status['steps']['step_4f'] = {
+                'status': 'failed_with_fallback',
+                'error': f'API analyzer failed: {result.stderr}',
+                'fallback_used': True
+            }
+
+    except Exception as e:
+        # Error: Set fallback data and continue
+        review_data['api_changes'] = []
+        review_data['impact_analysis']['affected_apis'] = []
+        execution_status['steps']['step_4f'] = {
+            'status': 'failed_with_fallback',
+            'error': str(e),
+            'fallback_used': True
+        }
+
+# EXECUTION:
+execute_api_impact_analysis()
 ```
-Analyze ONLY changes in this PR:
 
-BREAKING CHANGES:
-- Removed endpoints or parameters
-- Changed response structures
-- Modified HTTP methods or paths
-- Authentication requirement changes
-- Required vs optional field changes
+**What This Does**:
 
-BACKWARD COMPATIBILITY:
-- New optional vs required fields
-- Default value handling
-- API versioning strategy
-- Deprecation notices
+1. ✅ Calls api_impact_analyzer.py with PR file information
+2. ✅ Detects REST endpoints and breaking changes
+3. ✅ Populates `review_data['api_changes']` array
+4. ✅ Populates `review_data['impact_analysis']['affected_apis']` array
+5. ✅ Handles errors gracefully (uses empty arrays, continues workflow)
+6. ✅ Logs results in execution_status
 
-CONTRACTS:
-- OpenAPI/Swagger documentation updates
-- Request/response schema changes
-- Error response modifications
-- Content-Type changes
+**Detected Information**:
 
-Identify Affected APIs:
-- Endpoint paths changed
-- HTTP methods modified
-- Request/response DTOs altered
-```
-
-**Output**:
 ```json
 {
   "api_changes": [
     {
       "endpoint": "POST /api/v1/data/process",
+      "method": "POST",
       "type": "BREAKING",
       "change": "Added required field in request body",
       "impact": "HIGH",
-      "file": "DataController.java",
-      "line": 45
+      "backward_compatible": false,
+      "affected_consumers": ["mobile-app", "web-client"],
+      "migration_notes": "Update clients to include new 'processId' field"
     }
   ],
-  "affected_endpoints": [
-    "POST /api/v1/data/process",
-    "GET /api/v1/data/{id}"
-  ]
+  "impact_analysis": {
+    "affected_apis": [
+      {
+        "endpoint": "POST /api/v1/data/process",
+        "method": "POST",
+        "status": "MODIFIED"
+      },
+      {
+        "endpoint": "GET /api/v1/data/{id}",
+        "method": "GET",
+        "status": "MODIFIED"
+      }
+    ]
+  }
 }
 ```
+
+**Error Handling**:
+- ✅ If api_impact_analyzer.py fails, use empty arrays but continue
+- ✅ JSON structure always maintained
+- ✅ Errors logged in execution_status['steps']['step_4f']
+- ✅ Workflow never stops due to API analysis errors
 
 ---
 

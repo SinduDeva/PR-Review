@@ -156,6 +156,116 @@ def build_overall_recommendation(critical, high, data):
     return recommendation
 
 
+def generate_api_impact_html(api_changes, affected_apis):
+    """
+    Generate HTML section for API impact analysis
+    Shows affected endpoints, breaking changes, and migration notes
+    """
+    if not api_changes and not affected_apis:
+        return '<div class="alert alert-success">✅ No API changes detected</div>'
+
+    html = []
+    html.append('<section class="api-impact card shadow mb-4">')
+    html.append('  <div class="card-header bg-info text-white">')
+    html.append('    <h3><i class="fas fa-exchange-alt"></i> 🔗 Affected APIs</h3>')
+    html.append('  </div>')
+    html.append('  <div class="card-body">')
+
+    # Breaking Changes Section
+    breaking_changes = [c for c in (api_changes or []) if c.get('type') == 'BREAKING']
+    if breaking_changes:
+        html.append('    <div class="breaking-changes mb-4">')
+        html.append('      <h4 class="text-danger"><i class="fas fa-exclamation-circle"></i> ⚠️ Breaking Changes (Migration Required)</h4>')
+        html.append('      <div class="table-responsive">')
+        html.append('        <table class="table table-hover">')
+        html.append('          <thead class="table-dark">')
+        html.append('            <tr><th>Endpoint</th><th>Method</th><th>Change</th><th>Impact</th></tr>')
+        html.append('          </thead>')
+        html.append('          <tbody>')
+
+        for change in breaking_changes:
+            endpoint = change.get('endpoint', 'Unknown')
+            method = change.get('method', 'UNKNOWN')
+            change_desc = change.get('change', 'API Modified')
+            impact = change.get('impact', 'UNKNOWN')
+            impact_color = 'danger' if impact == 'HIGH' else 'warning'
+
+            html.append(f'            <tr>')
+            html.append(f'              <td><code>{endpoint}</code></td>')
+            html.append(f'              <td><span class="badge bg-primary">{method}</span></td>')
+            html.append(f'              <td>{change_desc}</td>')
+            html.append(f'              <td><span class="badge bg-{impact_color}">{impact}</span></td>')
+            html.append(f'            </tr>')
+
+        html.append('          </tbody>')
+        html.append('        </table>')
+        html.append('      </div>')
+
+        # Migration Notes
+        html.append('      <div class="alert alert-warning mt-3">')
+        html.append('        <strong>Migration Notes:</strong>')
+        html.append('        <ul>')
+        for change in breaking_changes:
+            if change.get('migration_notes'):
+                html.append(f'          <li>{change["migration_notes"]}</li>')
+            if change.get('affected_consumers'):
+                html.append(f'          <li>Affected consumers: {", ".join(change["affected_consumers"])}</li>')
+        html.append('        </ul>')
+        html.append('      </div>')
+        html.append('    </div>')
+
+    # Non-Breaking Changes Section
+    non_breaking_changes = [c for c in (api_changes or []) if c.get('type') != 'BREAKING']
+    if non_breaking_changes:
+        html.append('    <div class="non-breaking-changes mb-4">')
+        html.append('      <h4 class="text-success"><i class="fas fa-check-circle"></i> ℹ️ Non-Breaking Changes</h4>')
+        html.append('      <p class="text-muted">The following API changes are backward compatible:</p>')
+        html.append('      <ul class="list-group">')
+
+        for change in non_breaking_changes:
+            endpoint = change.get('endpoint', 'Unknown')
+            method = change.get('method', 'UNKNOWN')
+            change_desc = change.get('change', 'API Modified')
+            html.append(f'        <li class="list-group-item"><code>{method} {endpoint}</code> - {change_desc}</li>')
+
+        html.append('      </ul>')
+        html.append('    </div>')
+
+    # Affected Endpoints Summary
+    if affected_apis:
+        html.append('    <div class="affected-endpoints-summary">')
+        html.append('      <h4>📊 All Affected Endpoints</h4>')
+        html.append('      <div class="table-responsive">')
+        html.append('        <table class="table table-sm">')
+        html.append('          <thead><tr><th>Endpoint</th><th>Method</th><th>Status</th></tr></thead>')
+        html.append('          <tbody>')
+
+        for api in affected_apis[:20]:  # Show top 20
+            endpoint = api.get('endpoint', 'Unknown')
+            method = api.get('method', 'UNKNOWN')
+            status = api.get('status', 'Modified')
+            status_badge = 'warning' if status in ['MODIFIED', 'Changed'] else 'success' if status == 'NEW' else 'danger'
+
+            html.append(f'            <tr>')
+            html.append(f'              <td><code>{endpoint}</code></td>')
+            html.append(f'              <td>{method}</td>')
+            html.append(f'              <td><span class="badge bg-{status_badge}">{status}</span></td>')
+            html.append(f'            </tr>')
+
+        if len(affected_apis) > 20:
+            html.append(f'            <tr><td colspan="3" class="text-muted">... and {len(affected_apis) - 20} more</td></tr>')
+
+        html.append('          </tbody>')
+        html.append('        </table>')
+        html.append('      </div>')
+        html.append('    </div>')
+
+    html.append('  </div>')
+    html.append('</section>')
+
+    return '\n'.join(html)
+
+
 def generate_html_report(data):
     """
     Generate HTML report from JSON data using external template
@@ -223,6 +333,15 @@ def generate_html_report(data):
         print(f"⚠️ Warning building recommendation: {e}")
         overall_rec = {'decision': 'UNABLE_TO_REVIEW', 'reason': 'Could not complete review'}
 
+    # Generate API impact HTML section
+    try:
+        api_changes = data.get('api_changes', []) if isinstance(data.get('api_changes'), list) else []
+        affected_apis = data.get('impact_analysis', {}).get('affected_apis', []) if isinstance(data.get('impact_analysis', {}), dict) else []
+        api_impact_html = generate_api_impact_html(api_changes, affected_apis)
+    except Exception as e:
+        print(f"⚠️ Warning building API impact section: {e}")
+        api_impact_html = '<div class="alert alert-success">✅ No API changes detected</div>'
+
     context = {
         'metadata': metadata,
         'summary': summary,
@@ -236,6 +355,7 @@ def generate_html_report(data):
         'overall_recommendation': overall_rec,
         'positive_observations': data.get('positive_observations', []) if isinstance(data.get('positive_observations'), list) else [],
         'ai_summary': data.get('ai_summary', 'AI summary not available'),
+        'api_impact_html': api_impact_html,
         'generated_at': data.get('generated_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')),
     }
 

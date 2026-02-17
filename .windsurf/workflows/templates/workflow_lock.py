@@ -212,6 +212,78 @@ class WorkflowLock:
         else:
             return True, f"Different PR - starting fresh", 1
 
+    def lock_workflow_file(self) -> Tuple[bool, str]:
+        """
+        Lock workflow file by making it read-only.
+        Prevents editing during execution (even by Cascade IDE).
+
+        Returns:
+            (success: bool, message: str)
+        """
+        try:
+            import stat
+            import platform
+
+            if not os.path.exists(self.workflow_file):
+                return False, f"Workflow file not found: {self.workflow_file}"
+
+            if platform.system() == 'Windows':
+                # On Windows, set file as read-only via attrib command
+                try:
+                    os.system(f'attrib +r "{self.workflow_file}"')
+                    return True, f"✅ Workflow file locked (read-only)"
+                except Exception as e:
+                    return False, f"❌ Could not lock workflow file: {e}"
+            else:
+                # On Unix/Linux/macOS, remove write permissions (644 → 444)
+                try:
+                    current_mode = os.stat(self.workflow_file).st_mode
+                    # Remove write permissions for owner, group, and others
+                    new_mode = current_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
+                    os.chmod(self.workflow_file, new_mode)
+                    return True, f"✅ Workflow file locked (read-only)"
+                except Exception as e:
+                    return False, f"❌ Could not lock workflow file: {e}"
+
+        except Exception as e:
+            return False, f"❌ Error locking workflow file: {e}"
+
+    def unlock_workflow_file(self) -> Tuple[bool, str]:
+        """
+        Unlock workflow file by making it writable again.
+        Called after execution completes (successfully or with errors).
+
+        Returns:
+            (success: bool, message: str)
+        """
+        try:
+            import stat
+            import platform
+
+            if not os.path.exists(self.workflow_file):
+                return False, f"Workflow file not found: {self.workflow_file}"
+
+            if platform.system() == 'Windows':
+                # On Windows, remove read-only via attrib command
+                try:
+                    os.system(f'attrib -r "{self.workflow_file}"')
+                    return True, f"✅ Workflow file unlocked (writable)"
+                except Exception as e:
+                    return False, f"❌ Could not unlock workflow file: {e}"
+            else:
+                # On Unix/Linux/macOS, restore write permissions (444 → 644)
+                try:
+                    current_mode = os.stat(self.workflow_file).st_mode
+                    # Add write permissions for owner
+                    new_mode = current_mode | stat.S_IWUSR
+                    os.chmod(self.workflow_file, new_mode)
+                    return True, f"✅ Workflow file unlocked (writable)"
+                except Exception as e:
+                    return False, f"❌ Could not unlock workflow file: {e}"
+
+        except Exception as e:
+            return False, f"❌ Error unlocking workflow file: {e}"
+
 
 def print_lock_status(workflow_file: str):
     """Print workflow lock status"""
@@ -238,7 +310,7 @@ def main():
     import sys
 
     if len(sys.argv) < 2:
-        print("Usage: python workflow_lock.py <workflow_file> [validate|lock|release|status]")
+        print("Usage: python workflow_lock.py <workflow_file> [validate|lock|release|status|lockfile|unlockfile]")
         sys.exit(1)
 
     workflow_file = sys.argv[1]
@@ -266,6 +338,16 @@ def main():
     elif command == 'status':
         print_lock_status(workflow_file)
         sys.exit(0)
+
+    elif command == 'lockfile':
+        success, message = lock.lock_workflow_file()
+        print(message)
+        sys.exit(0 if success else 1)
+
+    elif command == 'unlockfile':
+        success, message = lock.unlock_workflow_file()
+        print(message)
+        sys.exit(0 if success else 1)
 
     else:
         print(f"Unknown command: {command}")

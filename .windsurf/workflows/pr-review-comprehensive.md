@@ -205,6 +205,20 @@ REPORT (Always):
 ### Step 0: Auto-Detect Current Branch and PR (ENHANCED)
 **Goal**: Identify the PR associated with current Git branch
 
+**LOCK WORKFLOW FILE - EXECUTION STARTING**:
+```bash
+python .windsurf/workflows/templates/workflow_lock.py \
+  .windsurf/workflows/pr-review-comprehensive.md \
+  lockfile
+
+Expected output:
+  ✅ Workflow file locked (read-only)
+
+Result: Workflow file becomes READ-ONLY during execution.
+        Even Cascade IDE cannot modify it until execution completes.
+        This ensures workflow integrity throughout execution.
+```
+
 **Actions** (with error handling):
 ```bash
 PRIMARY METHOD:
@@ -2080,6 +2094,29 @@ For each ticket_id in ticket_list:
     }
   }
 }
+```
+
+---
+
+### Step 9: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE
+
+**Goal**: Release read-only lock on workflow file after execution completes (success or failure)
+
+**UNLOCK WORKFLOW FILE - EXECUTION FINISHED**:
+```bash
+python .windsurf/workflows/templates/workflow_lock.py \
+  .windsurf/workflows/pr-review-comprehensive.md \
+  unlockfile
+
+Expected output:
+  ✅ Workflow file unlocked (writable)
+
+Result: Workflow file is restored to WRITABLE state.
+        Cascade IDE and users can edit it again.
+        Lock is automatically released after completion.
+
+Note: This step ALWAYS executes, even if earlier steps failed.
+      Ensures workflow is never permanently locked.
 ```
 
 ---

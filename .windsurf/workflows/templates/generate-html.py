@@ -346,7 +346,6 @@ def generate_html_report(data):
         'metadata': metadata,
         'summary': summary,
         'pagination_metadata': data.get('pagination_metadata', {}),
-        'execution_status': data.get('execution_status', {}),
         'impact_analysis': impact_analysis,
         'files_reviewed': files_context,
         'files_excluded': [{'path': f.get('path', 'unknown'), 'reason': f.get('reason', 'Skipped by workflow')} for f in files_skipped],

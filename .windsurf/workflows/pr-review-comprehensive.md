@@ -1813,30 +1813,49 @@ Deduplicate and prioritize by:
 
 6. Open HTML report in browser automatically:
 
-   # Cross-platform browser opening with Python
+   # Cross-platform browser opening with Python (Safe - no shell=True)
    python -c "
 import platform
 import subprocess
 import sys
+import os
 
 html_file = '.ai-review/pr-{pr_number}-data.html'
 
 try:
+    # Ensure file exists
+    if not os.path.exists(html_file):
+        raise FileNotFoundError(f'HTML file not found: {html_file}')
+
+    # Get absolute path for safety
+    abs_path = os.path.abspath(html_file)
+
+    # Cross-platform browser opening (NO shell=True - safe from injection)
     if platform.system() == 'Windows':
-        subprocess.run(['cmd', '/c', 'start', '', html_file], shell=True)
+        # Safe on Windows - uses native file association
+        os.startfile(abs_path)
     elif platform.system() == 'Darwin':  # macOS
-        subprocess.run(['open', html_file])
-    else:  # Linux
-        subprocess.run(['xdg-open', html_file])
+        # Safe - no shell=True, direct command
+        subprocess.run(['open', abs_path], check=False)
+    else:  # Linux and other Unix-like systems
+        # Safe - no shell=True, direct command
+        subprocess.run(['xdg-open', abs_path], check=False)
+
     print(f'✅ HTML report opened in browser: {html_file}')
+    print(f'   Location: {abs_path}')
+
+except FileNotFoundError as e:
+    print(f'❌ Error: {e}')
+    print(f'   HTML file generation may have failed')
+    sys.exit(0)  # Don't fail workflow
 except Exception as e:
     print(f'⚠️ Could not auto-open browser: {e}')
-    print(f'   Please open manually: {html_file}')
+    print(f'   Please open manually: {abs_path if \"abs_path\" in locals() else html_file}')
     sys.exit(0)  # Don't fail workflow if browser open fails
 "
 
-   # Alternative: Manual commands (if Python approach fails)
-   # Windows: Invoke-Item .ai-review/pr-{pr_number}-data.html
+   # Manual commands (if Python approach fails):
+   # Windows: start .ai-review/pr-{pr_number}-data.html
    # macOS:   open .ai-review/pr-{pr_number}-data.html
    # Linux:   xdg-open .ai-review/pr-{pr_number}-data.html
 ```

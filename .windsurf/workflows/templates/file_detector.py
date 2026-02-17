@@ -3,11 +3,14 @@
 Hybrid file detector: git-first with BitBucket API fallback
 - Primary: git diff --numstat (0 API calls, ~50ms)
 - Fallback: BitBucket API with pagination (2+ API calls, 1-3s)
+
+Cross-platform: Works on Windows, macOS, Linux
 """
 
 import subprocess
 import json
 import sys
+import os
 from typing import List, Dict, Optional
 
 
@@ -50,13 +53,17 @@ class FileDetector:
         return result
 
     def _detect_via_git(self) -> Optional[List[Dict]]:
-        """Get files from local git (FAST, 0 API calls, ~50ms)"""
+        """Get files from local git (FAST, 0 API calls, ~50ms)
+
+        Works cross-platform by using absolute path for git repo.
+        """
         base_branch = "origin/main"  # or origin/develop
 
-        # Get file statistics
+        # Get file statistics (use absolute path for robustness)
+        repo_root = os.getcwd()  # Get current git repo root
         output = subprocess.check_output(
             ["git", "diff", "--numstat", f"{base_branch}...HEAD"],
-            cwd=".",
+            cwd=repo_root,  # Use absolute path instead of "."
             stderr=subprocess.DEVNULL
         ).decode().strip()
 
@@ -87,10 +94,14 @@ class FileDetector:
         return files
 
     def _get_change_type(self, path: str, base_branch: str) -> str:
-        """Determine if file was MODIFIED, ADDED, DELETED, or RENAMED"""
+        """Determine if file was MODIFIED, ADDED, DELETED, or RENAMED
+
+        Works cross-platform by using absolute path for git repo.
+        """
+        repo_root = os.getcwd()  # Get current git repo root
         output = subprocess.check_output(
             ["git", "diff", "--name-status", f"{base_branch}...HEAD"],
-            cwd=".",
+            cwd=repo_root,  # Use absolute path instead of "."
             stderr=subprocess.DEVNULL
         ).decode().strip()
 

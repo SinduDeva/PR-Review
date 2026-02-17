@@ -2,24 +2,72 @@
 """
 CLI Output Formatter for PR Code Review
 Generates clean validation-focused output for Cascade CLI
+Cross-platform: Detects ANSI color support (Windows CMD, Terminal, etc.)
 """
 
 import json
 import sys
+import os
 from datetime import datetime
 
+# Detect if terminal supports ANSI colors
+def _supports_ansi_colors():
+    """Check if terminal supports ANSI color codes.
+
+    Returns True if:
+    - Running on non-Windows system
+    - Running on Windows Terminal or PowerShell 7+
+    - stdout is a TTY (interactive terminal)
+
+    Returns False on:
+    - Windows cmd.exe
+    - Redirected output (non-TTY)
+    - No terminal output
+    """
+    # Check if output is a TTY (not redirected)
+    if not sys.stdout.isatty():
+        return False
+
+    # Check if TERM indicates no color support
+    if os.environ.get('TERM') == 'dumb':
+        return False
+
+    # On Windows, only support colors on Windows Terminal and PowerShell 7+
+    if sys.platform == 'win32':
+        # Windows Terminal and newer PowerShell support ANSI colors
+        # Check for common Windows Terminal env vars
+        if os.environ.get('WT_SESSION') or os.environ.get('TERM_PROGRAM') == 'WindowsTerminal':
+            return True
+        # Check for PowerShell 7+ (pwsh)
+        if 'pwsh' in os.environ.get('SHELL', '').lower():
+            return True
+        # Default to False for Windows cmd.exe
+        return False
+
+    # Unix-like systems (Linux, macOS) support ANSI colors
+    return True
+
+# Enable colors only if supported
+USE_COLORS = _supports_ansi_colors()
+
 class Colors:
-    """ANSI color codes for terminal output"""
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    GREEN = '\033[92m'
-    BLUE = '\033[94m'
-    MAGENTA = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
+    """ANSI color codes for terminal output (Windows-compatible)
+
+    Colors are automatically disabled on Windows cmd.exe to prevent
+    raw escape codes from appearing in output.
+    """
+
+    # Conditional color codes based on terminal support
+    RED = '\033[91m' if USE_COLORS else ''
+    YELLOW = '\033[93m' if USE_COLORS else ''
+    GREEN = '\033[92m' if USE_COLORS else ''
+    BLUE = '\033[94m' if USE_COLORS else ''
+    MAGENTA = '\033[95m' if USE_COLORS else ''
+    CYAN = '\033[96m' if USE_COLORS else ''
+    WHITE = '\033[97m' if USE_COLORS else ''
+    BOLD = '\033[1m' if USE_COLORS else ''
+    UNDERLINE = '\033[4m' if USE_COLORS else ''
+    END = '\033[0m' if USE_COLORS else ''
 
 def print_header():
     """Print review completion header"""

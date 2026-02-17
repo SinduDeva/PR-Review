@@ -82,6 +82,54 @@ class WorkflowLock:
 
         return True, "✅ Workflow file unchanged - proceeding"
 
+    def validate_template_consistency(self, template_file: str = '.windsurf/workflows/templates/pr-review-template.html') -> Tuple[bool, str]:
+        """
+        Validate that HTML template hasn't been modified.
+        Template must be consistent across all runs for report consistency.
+
+        Returns:
+            (is_valid: bool, message: str)
+        """
+        template_checksum_file = Path('.ai-review/.template-checksum')
+
+        if not os.path.exists(template_file):
+            return False, f"❌ TEMPLATE NOT FOUND: {template_file}"
+
+        current_checksum = self._compute_file_hash(template_file)
+        stored_checksum = None
+
+        if template_checksum_file.exists():
+            try:
+                with open(template_checksum_file, 'r') as f:
+                    data = json.load(f)
+                    stored_checksum = data.get('checksum')
+            except Exception:
+                pass
+
+        # First run: store the checksum
+        if stored_checksum is None:
+            template_checksum_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(template_checksum_file, 'w') as f:
+                json.dump({
+                    'checksum': current_checksum,
+                    'timestamp': datetime.now().isoformat(),
+                    'template_file': template_file
+                }, f, indent=2)
+            return True, "✅ Template checksum validated (first run)"
+
+        # Subsequent runs: verify no changes
+        if current_checksum != stored_checksum:
+            return False, (
+                "❌ HTML TEMPLATE MODIFIED\n"
+                "   Template must remain consistent across all runs.\n"
+                f"   Expected checksum: {stored_checksum}\n"
+                f"   Current checksum: {current_checksum}\n"
+                "   To restore: git checkout " + template_file + "\n"
+                "   All reports must use the same template for consistency."
+            )
+
+        return True, "✅ Template checksum validated - consistent"
+
     def create_lock(self, pr_number: str, run_number: int = 1) -> bool:
         """
         Create execution lock file (for informational purposes only).

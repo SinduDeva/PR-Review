@@ -481,13 +481,12 @@ Legend:
   [*] = Modified File   [M] = Model   [C] = Controller
   [S] = Service        [R] = Repository   [U] = Utility
 
-{% if impact_analysis and impact_analysis.dependency_graph and impact_analysis.dependency_graph.nodes %}
+{% if impact_analysis and impact_analysis.summary %}
 Impact Summary:
-  ├─ Files Changed: {{ impact_analysis.impact_summary.files_changed }}
-  ├─ Direct Impact: {{ impact_analysis.impact_summary.direct_impact }} files
-  ├─ Transitive Impact: {{ impact_analysis.impact_summary.transitive_impact }} files
-  ├─ Total Affected: {{ impact_analysis.impact_summary.total_affected_files }} files
-  └─ Risk Level: {{ impact_analysis.impact_summary.risk_level }}
+  ├─ Files Changed: {{ impact_analysis.summary.files_changed }}
+  ├─ Direct Impact: {{ impact_analysis.summary.direct_impact }}
+  ├─ Transitive Impact: {{ impact_analysis.summary.transitive_impact }}
+  ├─ Risk Level: {{ impact_analysis.summary.risk_level }}
 
 Modified Files:
 {% for node in impact_analysis.dependency_graph.nodes %}

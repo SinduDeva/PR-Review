@@ -1505,7 +1505,32 @@ Deduplicate and prioritize by:
 
 #### 6b: Generate JSON Data File for Reports
 
-**CRITICAL**: Save the consolidated review data as a JSON file. This JSON is consumed by `generate-html.py`, `jira_formatter.py`, and `cli_formatter.py`. All values below must be populated from actual analysis — use NO hardcoded examples.
+**🔴 CRITICAL - CODE ANALYSIS & IMPACT SUMMARY REQUIRED**
+
+**Requirement**: The JSON file is the SINGLE SOURCE OF TRUTH for all three report formats:
+- ✅ HTML Report (generate-html.py) - displays all findings, severity breakdown, impact analysis
+- ✅ JIRA Comment (jira_formatter.py) - includes code analysis findings and risk assessment
+- ✅ CLI Summary (cli_formatter.py) - shows issue counts, top findings, impact summary
+
+**MANDATORY FIELDS FOR ALL REPORTS**:
+1. **Code Analysis Data** (from Steps 3-5):
+   - `findings[]` - ALL detected issues (bugs, security, performance, architecture)
+   - `spring_boot_validation` - Framework-specific analysis
+   - `test_coverage` - Coverage metrics and gaps
+   - `api_changes[]` - API impact analysis
+   - Summary of severity breakdown (CRITICAL, HIGH, MEDIUM, LOW counts)
+
+2. **Impact Summary** (from Step 5):
+   - `overall_recommendation` - Approval decision with justification
+   - `impact_analysis` - Risk level, affected APIs, dependency graph
+   - `recommendations[]` - Actionable next steps
+   - `ai_summary` - Overall summary of changes and impacts
+
+**VALIDATION**: Before generating reports, verify:
+- [ ] findings array is NOT empty (or clearly indicate "no issues found")
+- [ ] overall_recommendation is populated with decision (APPROVE/REQUEST_CHANGES/BLOCK)
+- [ ] impact_analysis risk_level is set (HIGH/MEDIUM/LOW)
+- [ ] ai_summary captures the essence of code analysis and impacts
 
 **Save to**: `.ai-review/pr-{pr_number}-data.json`
 
@@ -1823,18 +1848,37 @@ Deduplicate and prioritize by:
    **Important**: This is NOT destructive. Old reports are simply replaced with new ones.
    The workflow is designed to be re-executable by default.
 
-3. Generate HTML report (ZERO LLM tokens — uses external template):
+3. Generate HTML report ⭐ MANDATORY (ZERO LLM tokens — uses external template):
    python .windsurf/workflows/templates/generate-html.py .ai-review/pr-{pr_number}-data.json
-   
+
+   ✅ GUARANTEED TO COMPLETE - even if Python script fails, use fallback HTML generation
+   ✅ INCLUDES CODE ANALYSIS: All findings, severity breakdown, affected files
+   ✅ INCLUDES IMPACT SUMMARY: Risk level, affected APIs, test coverage, mitigation suggestions
+
    This reads pr-review-template.html and renders the full interactive report.
+
+   **CRITICAL**: If generate-html.py fails:
+   - DO NOT skip HTML generation
+   - Generate minimal fallback HTML with code analysis data
+   - Include: findings table, severity breakdown, affected files list
+   - Include: impact analysis, risk level, JIRA ticket, execution status
+   - Output: .ai-review/pr-{pr_number}-data.html (fallback version)
+
    Output: .ai-review/pr-{pr_number}-data.html
 
 4. Generate JIRA comment file (for Step 7):
    python .windsurf/workflows/templates/jira_formatter.py .ai-review/pr-{pr_number}-data.json
+
+   ✅ INCLUDES CODE ANALYSIS: All findings with context
+   ✅ INCLUDES IMPACT SUMMARY: Risk assessment, API impacts, recommendations
+
    Output: .ai-review/pr-{pr_number}-jira-comment.txt
 
 5. Print CLI summary:
    python .windsurf/workflows/templates/cli_formatter.py .ai-review/pr-{pr_number}-data.json
+
+   ✅ INCLUDES CODE ANALYSIS: Issue counts by severity, top findings
+   ✅ INCLUDES IMPACT SUMMARY: Risk level, affected components, next steps
 
 5b. Update master index (for report tracking):
    python .windsurf/workflows/templates/report_manager.py {pr_number} .ai-review/pr-{pr_number}-data.json

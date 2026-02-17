@@ -26,6 +26,7 @@ class MetadataFieldNames:
     TARGET_BRANCH = 'target_branch'
     BRANCH = 'branch'
     JIRA_TICKETS = 'jira_tickets'
+    JIRA_TICKET_ID = 'jira_ticket_id'  # Primary ticket extracted from branch name
     REVIEW_DATE = 'review_date'
     REVIEW_ID = 'review_id'
 
@@ -49,6 +50,7 @@ class MetadataSchema:
         MetadataFieldNames.TARGET_BRANCH,
         MetadataFieldNames.BRANCH,
         MetadataFieldNames.JIRA_TICKETS,
+        MetadataFieldNames.JIRA_TICKET_ID,  # Primary ticket from branch name
         MetadataFieldNames.REVIEW_DATE,
         MetadataFieldNames.REVIEW_ID,
     ]
@@ -74,6 +76,7 @@ class MetadataSchema:
         MetadataFieldNames.TARGET_BRANCH: str,
         MetadataFieldNames.BRANCH: str,
         MetadataFieldNames.JIRA_TICKETS: list,
+        MetadataFieldNames.JIRA_TICKET_ID: (str, type(None)),  # Can be None if not found
         MetadataFieldNames.REVIEW_DATE: str,
         MetadataFieldNames.REVIEW_ID: str,
         MetadataFieldNames.JIRA_WARNING: (str, type(None)),
@@ -89,6 +92,7 @@ class MetadataSchema:
         MetadataFieldNames.SOURCE_BRANCH: 'Unknown',
         MetadataFieldNames.TARGET_BRANCH: 'Unknown',
         MetadataFieldNames.JIRA_TICKETS: [],
+        MetadataFieldNames.JIRA_TICKET_ID: None,  # Will be extracted from branch name
         MetadataFieldNames.JIRA_WARNING: None,
         MetadataFieldNames.EXECUTION_TIME_SECONDS: 0,
     }

@@ -212,6 +212,22 @@ PRIMARY METHOD:
    git rev-parse --abbrev-ref HEAD
    → Store: current_branch
 
+1a. Extract JIRA ticket ID from branch name (NEW):
+   Regex pattern: [A-Z]+[-_][0-9]+
+   Examples:
+   - "PROJ-123-feature-name" → "PROJ-123"
+   - "ABC-456/feature-name" → "ABC-456"
+   - "feature/JIRA-789" → "JIRA-789"
+
+   If ticket found:
+     → Store: jira_ticket_id (will be used for JIRA updates)
+     → Log: "JIRA ticket extracted from branch: {jira_ticket_id}"
+
+   If NO ticket found in branch:
+     → Store: jira_ticket_id = None
+     → Will fallback to PR title extraction (existing behavior)
+     → Log: "No JIRA ticket found in branch name - will extract from PR"
+
 2. Get workspace and repository slug from MCP context:
    - MCP server provides workspace and repo_slug
    - Use from MCP tools context (NOT from git URL parsing)
@@ -1771,7 +1787,16 @@ Deduplicate and prioritize by:
 1. Ensure .ai-review/ directory exists:
    mkdir -p .ai-review   (or New-Item -ItemType Directory -Force .ai-review on Windows)
 
-2. Save the JSON from Step 6b to file:
+2. Archive Previous Run (if re-running):
+   python .windsurf/workflows/templates/report_manager.py {pr_number}
+
+   This will:
+   - Move old reports to .ai-review/pr-{pr_number}-run-1/ (if second run)
+   - Move old reports to .ai-review/pr-{pr_number}-run-2/ (if third run)
+   - Keep latest reports in .ai-review/ root for easy access
+   - Output: "✅ Archived: pr-{pr_number}-data.json → run-N/"
+
+3. Save the JSON from Step 6b to file:
    Write the complete JSON object to: .ai-review/pr-{pr_number}-data.json
 
    ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
@@ -1780,11 +1805,11 @@ Deduplicate and prioritize by:
 
    **Behavior**:
    - ✅ **First run**: Creates new report files
-   - ✅ **Subsequent runs**: Overwrites existing files with latest analysis
-   - ✅ **No file conflicts**: Old reports are replaced, not appended
+   - ✅ **Subsequent runs**: Archives old reports, then creates new ones
+   - ✅ **No file conflicts**: Old reports moved to run-N/ subdirectories
    - ✅ **No cooldown**: Re-run as many times as needed, immediately
 
-   **Files Always Overwritten**:
+   **Files in .ai-review/ Root (Latest)**:
    - .ai-review/pr-{pr_number}-data.json ← Latest analysis data
    - .ai-review/pr-{pr_number}-data.html ← Regenerated from JSON
    - .ai-review/pr-{pr_number}-jira-comment.txt ← Regenerated from JSON
@@ -1810,6 +1835,15 @@ Deduplicate and prioritize by:
 
 5. Print CLI summary:
    python .windsurf/workflows/templates/cli_formatter.py .ai-review/pr-{pr_number}-data.json
+
+5b. Update master index (for report tracking):
+   python .windsurf/workflows/templates/report_manager.py {pr_number} .ai-review/pr-{pr_number}-data.json
+
+   This will:
+   - Update .ai-review/index.json with current run metadata
+   - Log run number, timestamp, issue counts, JIRA ticket
+   - Track complete run history for this PR
+   - Output: "✅ Index updated: .ai-review/index.json"
 
 6. Open HTML report in browser automatically:
 
@@ -1875,16 +1909,27 @@ except Exception as e:
 #### 7a: Check JIRA Ticket Availability
 
 ```
-Check metadata.jira_tickets from Step 1:
+Primary: Check metadata.jira_ticket_id (extracted from branch name in Step 0):
 
-If jira_tickets is EMPTY or NULL:
-  - Skip JIRA posting entirely
-  - Output: "⚠️ JIRA Integration Skipped — no tickets found in PR title/description"
-  - Continue to workflow completion
-  - Set jira_posted = false
+If jira_ticket_id is NOT NULL:
+  - Use this ticket for JIRA posting
+  - Output: "✅ JIRA ticket found in branch name: {jira_ticket_id}"
+  - Continue to JIRA posting (7b)
+
+Fallback: Check metadata.jira_tickets from Step 1 (PR title/description):
 
 If jira_tickets contains values:
+  - Use these tickets for JIRA posting
+  - Output: "✅ JIRA tickets found in PR: {jira_tickets}"
   - Continue to JIRA posting (7b)
+
+Failure: No ticket found:
+
+If BOTH jira_ticket_id AND jira_tickets are EMPTY or NULL:
+  - Skip JIRA posting entirely
+  - Output: "⚠️ JIRA Integration Skipped — no tickets found in branch name or PR"
+  - Continue to workflow completion
+  - Set jira_posted = false
 ```
 
 ---
@@ -1894,7 +1939,15 @@ If jira_tickets contains values:
 **Actions** (use `mcp0_*` Atlassian MCP tools):
 
 ```
-For each JIRA ticket ID extracted in Step 1:
+Determine tickets to post:
+
+ticket_list = []
+If metadata.jira_ticket_id is NOT NULL:
+  - ticket_list = [metadata.jira_ticket_id]  # Priority: from branch
+Else if metadata.jira_tickets is NOT EMPTY:
+  - ticket_list = metadata.jira_tickets  # Fallback: from PR title
+
+For each ticket_id in ticket_list:
 
 1. Get the Atlassian Cloud ID:
    Call: mcp0_getAccessibleAtlassianResources()
@@ -1907,7 +1960,7 @@ For each JIRA ticket ID extracted in Step 1:
 3. Post comment to JIRA:
    Call: mcp0_addCommentToJiraIssue(
      cloudId="{cloud_id}",
-     issueIdOrKey="{ticket_id}",
+     issueIdOrKey="{ticket_id}",  # Will be jira_ticket_id from branch
      commentBody=<contents of jira-comment.txt>
    )
 

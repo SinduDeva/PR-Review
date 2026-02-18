@@ -53,59 +53,153 @@ class ExecutionOrchestrator:
     # ============================================================================
 
     def _format_jira_plain_text(self) -> str:
-        """Format analysis as PLAIN TEXT (no unicode, no colors) for JIRA"""
+        """Format ENTIRE analysis as PLAIN TEXT (no unicode, no colors) for JIRA"""
         meta = self.analysis_data.get('metadata', {})
         summ = self.analysis_data.get('summary', {})
         findings = self.analysis_data.get('findings', [])
+        files_reviewed = self.analysis_data.get('files_reviewed', [])
+        files_skipped = self.analysis_data.get('files_skipped', [])
 
         lines = []
         lines.append("=" * 80)
         lines.append(f"AUTOMATED PR REVIEW - PR #{self.pr_number}")
         lines.append("=" * 80)
         lines.append("")
+        lines.append(f"Title: {meta.get('title', 'N/A')}")
         lines.append(f"Branch: {meta.get('branch', 'N/A')}")
         lines.append(f"Author: {meta.get('author', 'N/A')}")
         lines.append(f"Review Date: {meta.get('review_date', 'N/A')}")
         lines.append("")
 
-        # Summary metrics (PLAIN TEXT - no unicode)
+        # Summary metrics
         lines.append("-" * 80)
-        lines.append("SUMMARY")
+        lines.append("SUMMARY METRICS")
         lines.append("-" * 80)
         lines.append(f"Files Changed: {summ.get('files_changed', 0)}")
+        lines.append(f"Files Validated: {summ.get('files_validated', 0)}")
+        lines.append(f"Files Excluded: {summ.get('files_excluded', 0)}")
         lines.append(f"Lines Added: +{summ.get('lines_added', 0)}")
         lines.append(f"Lines Deleted: -{summ.get('lines_deleted', 0)}")
         lines.append("")
-        lines.append(f"Critical Issues: {summ.get('critical_issues', 0)}")
-        lines.append(f"High Issues: {summ.get('high_issues', 0)}")
-        lines.append(f"Medium Issues: {summ.get('medium_issues', 0)}")
-        lines.append(f"Low Issues: {summ.get('low_issues', 0)}")
+        lines.append(f"Issues Summary:")
+        lines.append(f"  Critical: {summ.get('critical_issues', 0)}")
+        lines.append(f"  High: {summ.get('high_issues', 0)}")
+        lines.append(f"  Medium: {summ.get('medium_issues', 0)}")
+        lines.append(f"  Low: {summ.get('low_issues', 0)}")
         lines.append("")
 
-        # Critical/High findings
-        critical = [f for f in findings if f.get('severity') in ['CRITICAL', 'HIGH']]
-        if critical:
+        # Files Reviewed
+        if files_reviewed:
             lines.append("-" * 80)
-            lines.append("CRITICAL AND HIGH PRIORITY ISSUES")
+            lines.append("FILES REVIEWED")
+            lines.append("-" * 80)
+            for file in files_reviewed[:20]:  # Top 20
+                lines.append(f"File: {file.get('path', 'N/A')}")
+                lines.append(f"  Layer: {file.get('layer', 'N/A')}")
+                lines.append(f"  Status: {file.get('status', 'N/A')}")
+                lines.append(f"  Changes: +{file.get('additions', 0)} -{file.get('deletions', 0)}")
+                if file.get('ai_summary'):
+                    lines.append(f"  Summary: {file.get('ai_summary', 'N/A')}")
+                lines.append("")
+            if len(files_reviewed) > 20:
+                lines.append(f"... and {len(files_reviewed) - 20} more files")
+                lines.append("")
+
+        # Files Skipped
+        if files_skipped:
+            lines.append("-" * 80)
+            lines.append("FILES SKIPPED/EXCLUDED")
+            lines.append("-" * 80)
+            for i, file in enumerate(files_skipped[:10], 1):
+                lines.append(f"{i}. {file}")
+            if len(files_skipped) > 10:
+                lines.append(f"... and {len(files_skipped) - 10} more")
+            lines.append("")
+
+        # ALL Findings (not just critical/high)
+        if findings:
+            lines.append("-" * 80)
+            lines.append(f"ALL FINDINGS ({len(findings)} total)")
             lines.append("-" * 80)
             lines.append("")
 
-            for finding in critical[:10]:  # Top 10
+            # Group by severity
+            by_severity = {}
+            for finding in findings:
                 sev = finding.get('severity', 'UNKNOWN')
-                lines.append(f"[{sev}] {finding.get('title', 'N/A')}")
-                lines.append(f"  File: {finding.get('file', 'N/A')}:{finding.get('line', 'N/A')}")
-                lines.append(f"  Problem: {finding.get('description', 'N/A')}")
-                lines.append(f"  Impact: {finding.get('impact', 'N/A')}")
-                lines.append(f"  Solution: {finding.get('suggestion', 'N/A')}")
-                lines.append("")
+                if sev not in by_severity:
+                    by_severity[sev] = []
+                by_severity[sev].append(finding)
 
-            if len(critical) > 10:
-                lines.append(f"... and {len(critical) - 10} more issues")
-                lines.append("")
+            # Sort by severity priority
+            severity_order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
+            for severity in severity_order:
+                if severity in by_severity:
+                    lines.append(f"\n{severity} ({len(by_severity[severity])}):")
+                    for finding in by_severity[severity]:
+                        lines.append(f"  [{finding.get('id', 'N/A')}] {finding.get('title', 'N/A')}")
+                        lines.append(f"    Type: {finding.get('type', 'N/A')}")
+                        lines.append(f"    File: {finding.get('file', 'N/A')}:{finding.get('line', 'N/A')}")
+                        lines.append(f"    Description: {finding.get('description', 'N/A')}")
+                        lines.append(f"    Impact: {finding.get('impact', 'N/A')}")
+                        lines.append(f"    Suggestion: {finding.get('suggestion', 'N/A')}")
+                        if finding.get('suggested_fix'):
+                            lines.append(f"    Fix: {finding.get('suggested_fix', 'N/A')}")
+                        lines.append("")
         else:
             lines.append("-" * 80)
-            lines.append("NO CRITICAL OR HIGH PRIORITY ISSUES")
+            lines.append("NO FINDINGS")
             lines.append("-" * 80)
+            lines.append("")
+
+        # Impact Analysis
+        impact = self.analysis_data.get('impact_analysis', {})
+        if impact:
+            lines.append("-" * 80)
+            lines.append("IMPACT ANALYSIS")
+            lines.append("-" * 80)
+            if isinstance(impact, dict):
+                for key, val in impact.items():
+                    if isinstance(val, dict):
+                        lines.append(f"{key}:")
+                        for k, v in val.items():
+                            lines.append(f"  {k}: {v}")
+                    else:
+                        lines.append(f"{key}: {val}")
+            else:
+                lines.append(str(impact))
+            lines.append("")
+
+        # API Changes
+        api_changes = self.analysis_data.get('api_changes', [])
+        if api_changes:
+            lines.append("-" * 80)
+            lines.append("API CHANGES")
+            lines.append("-" * 80)
+            for change in api_changes:
+                if isinstance(change, dict):
+                    lines.append(f"Endpoint: {change.get('endpoint', 'N/A')}")
+                    lines.append(f"  Method: {change.get('method', 'N/A')}")
+                    lines.append(f"  Change: {change.get('change_type', 'N/A')}")
+                    lines.append(f"  Description: {change.get('description', 'N/A')}")
+                    lines.append("")
+                else:
+                    lines.append(str(change))
+            lines.append("")
+
+        # Spring Boot Validation
+        spring = self.analysis_data.get('spring_boot_validation', {})
+        if spring:
+            lines.append("-" * 80)
+            lines.append("SPRING BOOT VALIDATION")
+            lines.append("-" * 80)
+            for cat, val in spring.items():
+                if isinstance(val, dict):
+                    lines.append(f"{cat}:")
+                    for k, v in val.items():
+                        lines.append(f"  {k}: {v}")
+                else:
+                    lines.append(f"{cat}: {val}")
             lines.append("")
 
         # Test Coverage
@@ -118,17 +212,14 @@ class ExecutionOrchestrator:
                 lines.append(f"{metric}: {val}")
             lines.append("")
 
-        # Spring Boot Validation
-        spring = self.analysis_data.get('spring_boot_validation', {})
-        if spring:
+        # Positive Observations
+        positive = self.analysis_data.get('positive_observations', [])
+        if positive:
             lines.append("-" * 80)
-            lines.append("SPRING BOOT VALIDATION")
+            lines.append("POSITIVE OBSERVATIONS")
             lines.append("-" * 80)
-            for cat, val in spring.items():
-                if isinstance(val, dict):
-                    lines.append(f"{cat}: {val.get('score', 'N/A')} ({val.get('status', 'N/A')})")
-                else:
-                    lines.append(f"{cat}: {val}")
+            for obs in positive:
+                lines.append(f"+ {obs}")
             lines.append("")
 
         # AI Summary
@@ -140,7 +231,20 @@ class ExecutionOrchestrator:
             lines.append(ai_summ)
             lines.append("")
 
-        # Recommendation
+        # Overall Recommendation
+        overall = self.analysis_data.get('overall_recommendation', {})
+        if overall:
+            lines.append("-" * 80)
+            lines.append("OVERALL RECOMMENDATION")
+            lines.append("-" * 80)
+            if isinstance(overall, dict):
+                for key, val in overall.items():
+                    lines.append(f"{key}: {val}")
+            else:
+                lines.append(str(overall))
+            lines.append("")
+
+        # Final Recommendation
         lines.append("-" * 80)
         lines.append("RECOMMENDATION")
         lines.append("-" * 80)

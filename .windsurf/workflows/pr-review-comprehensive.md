@@ -219,68 +219,125 @@ Result: Workflow file becomes READ-ONLY during execution.
         This ensures workflow integrity throughout execution.
 ```
 
-**VALIDATE WORKFLOW STRUCTURE** (internal validation - silent):
+**READ AND VALIDATE ENTIRE WORKFLOW FILE** (internal validation - silent):
 
 ```bash
-1. Read complete workflow file from disk:
-   workflow_file = .windsurf/workflows/pr-review-comprehensive.md
-   workflow_content = read file contents
+STEP: Pre-Flight Workflow File Validation
 
-2. Parse YAML frontmatter:
-   - Extract auto_execution_mode (expect: 3)
-   - Extract description
+CRITICAL: Read the ENTIRE workflow file from start to finish before execution
 
-3. Count and validate workflow structure:
-   Main Steps (### Step X:):
-   - Expected: 10 total (Step 0 through Step 9)
-   - Line 205: ### Step 0
-   - Line 336: ### Step 1
-   - Line 379: ### Step 2
-   - Line 702: ### Step 3
-   - Line 771: ### Step 4
-   - Line 1273: ### Step 5
-   - Line 1497: ### Step 6
-   - Line 1959: ### Step 7
-   - Line 2036: ### Step 8
-   - Line 2101: ### Step 9
+1. Read complete workflow file from disk (ALL LINES):
+   File: .windsurf/workflows/pr-review-comprehensive.md
+   Read entire file line by line (from line 1 to end)
+   Capture: workflow_content (complete file contents)
+   Verify: File successfully read without errors
 
-   Sub-Steps (#### X[a-z]:):
-   - Step 4: Expected 7 (4a, 4b, 4c, 4d, 4e, 4f, 4g)
-   - Step 5: Expected 2 (5a, 5b)
-   - Step 6: Expected 3 (6a, 6b, 6c)
-   - Step 7: Expected 2 (7a, 7b)
-   - Total sub-steps: 14
+2. Parse YAML frontmatter (lines 1-3):
+   - Line 1: ---
+   - Line 2: auto_execution_mode: 3
+   - Line 3: description: Comprehensive PR Code Review...
+   Extract: auto_execution_mode, description
 
-4. Validate structure consistency:
-   - All main steps use ### heading level ✅
-   - All sub-steps use #### heading level ✅
-   - No sub-steps use ### format (all use #### Xa:) ✅
-   - File size approximately 2100+ lines ✅
-   - YAML frontmatter present ✅
+3. Scan entire file for all major sections:
+   - CODE MODE LOCK section (around line 6)
+   - Pre-Execution Validation section (around line 69)
+   - Overview section (around line 124)
+   - Prerequisites section (around line 141)
+   - Error Handling Guidelines section (around line 149)
+   - Workflow Steps section (starting line 203)
 
-5. Log validation results to execution_status:
+4. Count and validate ALL main steps (MUST find exactly 10):
+   Using regex: ^### Step [0-9]:
+   - Line 205: ### Step 0: Auto-Detect Current Branch and PR
+   - Line 400: ### Step 1: Gather PR Context and Extract JIRA Tickets
+   - Line 443: ### Step 2: Get Changed Files in PR
+   - Line 766: ### Step 3: File Categorization & Technology Detection
+   - Line 835: ### Step 4: Parallel Deep Analysis
+   - Line 1337: ### Step 5: Impact Analysis with Layered Dependency Graph
+   - Line 1561: ### Step 6: Aggregate Findings & Generate Reports
+   - Line 2023: ### Step 7: JIRA Integration - Submit Report
+   - Line 2100: ### Step 8: Upload Results to Database
+   - Line 2165: ### Step 9: UNLOCK WORKFLOW FILE
+
+   VALIDATION: Count must equal exactly 10 ✅
+
+5. Count and validate ALL sub-steps (MUST find exactly 14):
+   Using regex: ^#### [0-9][a-z]:
+
+   Step 4 sub-steps (7 total):
+   - #### 4a: Java Source Code Validation
+   - #### 4b: XML Configuration Validation
+   - #### 4c: YAML Configuration Validation
+   - #### 4d: SQL Script Validation
+   - #### 4e: Property File Validation
+   - #### 4f: API Change Impact Analysis ✅ (Now uses #### format)
+   - #### 4g: Test Coverage Validation ✅ (Now uses #### format)
+
+   Step 5 sub-steps (2 total):
+   - #### 5a: Build Multi-Layer Dependency Graph
+   - #### 5b: Impact Propagation Analysis
+
+   Step 6 sub-steps (3 total):
+   - #### 6a: Consolidate All Analysis Results
+   - #### 6b: Generate JSON Data File for Reports
+   - #### 6c: Generate HTML Report and CLI Output
+
+   Step 7 sub-steps (2 total):
+   - #### 7a: Check JIRA Ticket Availability
+   - #### 7b: Post JIRA Comment
+
+   VALIDATION: Count must equal exactly 14 ✅
+
+6. Verify markdown hierarchy consistency:
+   - All main steps (0-9) use ONLY ### heading level
+   - All sub-steps (4a-4g, 5a-5b, 6a-6c, 7a-7b) use ONLY #### heading level
+   - NO sub-steps use ### format
+   - NO main steps use #### format
+   - File is well-formed markdown
+
+7. Verify file integrity:
+   - File size: ~2200+ lines (minimum)
+   - All sections are present and in order
+   - No truncation or corruption detected
+   - File ends cleanly at Step 9 UNLOCK section
+
+8. Log complete validation results to execution_status:
    {
      "workflow_validation": {
-       "checked_at": "{timestamp}",
+       "timestamp": "{ISO8601_timestamp}",
        "file_path": ".windsurf/workflows/pr-review-comprehensive.md",
+       "file_read": true,
+       "entire_file_scanned": true,
+       "file_size_bytes": {actual_bytes},
+       "lines_read": {total_lines},
        "main_steps_found": 10,
        "sub_steps_found": 14,
+       "yaml_frontmatter": "valid",
+       "markdown_hierarchy": "consistent",
+       "all_sections_present": true,
        "structure_valid": true,
        "warnings": [],
        "status": "valid"
      }
    }
 
-6. If structure INVALID, log warnings but CONTINUE (don't block):
-   - Log any missing steps
-   - Log any hierarchy inconsistencies
+9. If structure validation FAILS:
+   - Log specific issues found:
+     * Missing main steps (expected 10, found N)
+     * Missing sub-steps (expected 14, found N)
+     * Hierarchy inconsistencies (sub-steps using ### format)
+     * File truncation or corruption
+     * Missing sections
    - Set status to "partial_valid"
-   - Add warning messages to execution_status.workflow_validation.warnings
-   - Proceed to PR auto-detection (don't abort)
+   - Log all warnings to execution_status.workflow_validation.warnings
+   - CONTINUE to next step (don't block execution)
+   - Print warning to execution_status output
 
-7. If structure VALID:
-   - Log status: "valid"
-   - Proceed to PR auto-detection
+10. If structure validation PASSES:
+    - Log status: "valid"
+    - Log completion: "Entire workflow file validated successfully"
+    - All checks passed: [✅] 10 main steps, [✅] 14 sub-steps, [✅] hierarchy consistent
+    - Proceed immediately to PR auto-detection (Step 0 Actions)
 ```
 
 **Actions** (with error handling):

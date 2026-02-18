@@ -52,6 +52,21 @@ def save_json_data(json_data, output_file=None, pr_number=None):
         return False, message, output_file
 
 
+def validate_json_data(json_data):
+    """Validate JSON data has minimum required fields"""
+    if not isinstance(json_data, dict):
+        raise ValueError(f"JSON data must be a dictionary, got {type(json_data).__name__}")
+
+    # Check for at least one of these required fields
+    required_fields = ['metadata', 'pr_number', 'findings', 'summary']
+    has_field = any(field in json_data for field in required_fields)
+
+    if not has_field:
+        raise ValueError(f"JSON data missing required fields. Expected at least one of: {required_fields}")
+
+    return True
+
+
 def main():
     """Command line interface for saving JSON data"""
     import argparse
@@ -68,34 +83,61 @@ def main():
     try:
         # Determine PR number
         pr_number = None
-        if args.pr == '-':
-            # Read PR number from first line of stdin
-            first_line = sys.stdin.readline().strip()
-            try:
-                pr_number = int(first_line)
-            except ValueError:
-                # If not a number, treat as JSON data
-                import io
-                sys.stdin = io.StringIO(first_line + '\n' + sys.stdin.read())
-                pr_number = None
-        else:
+        if args.pr != '-':
             try:
                 pr_number = int(args.pr)
             except ValueError:
-                pr_number = None
+                # If not a number, use as-is (might be extracted from JSON later)
+                pass
 
         # If data provided as argument, use it; otherwise read from stdin
         if args.data:
-            json_data = json.loads(args.data)
+            try:
+                json_data = json.loads(args.data)
+            except json.JSONDecodeError as e:
+                print(f"❌ Invalid JSON in --data argument: {e}")
+                print(f"   Position {e.pos}: {e.msg}")
+                sys.exit(1)
         else:
             # Read JSON from stdin (piped from previous step)
-            json_data = json.load(sys.stdin)
+            try:
+                stdin_content = sys.stdin.read().strip()
+
+                if not stdin_content:
+                    raise ValueError("No JSON data received from stdin")
+
+                # Try to parse as JSON
+                json_data = json.loads(stdin_content)
+
+            except json.JSONDecodeError as e:
+                print(f"❌ Invalid JSON received from stdin: {e}")
+                print(f"   Position {e.pos}: {e.msg}")
+                print(f"   Context: {stdin_content[max(0, e.pos-40):min(len(stdin_content), e.pos+40)]}")
+                sys.exit(1)
+            except ValueError as e:
+                print(f"❌ Error reading from stdin: {e}")
+                sys.exit(1)
+
+        # Validate JSON structure
+        try:
+            validate_json_data(json_data)
+        except ValueError as e:
+            print(f"⚠️  Warning: {e}")
+            print("   Continuing anyway (some fields may be missing)")
 
         # If PR number not found in args, try to extract from JSON
         if pr_number is None:
             pr_number = json_data.get('pr_number')
+
+            # Try nested location
             if pr_number is None:
-                raise ValueError("PR number not provided and not found in JSON data")
+                metadata = json_data.get('metadata', {})
+                pr_number = metadata.get('pr_number')
+
+            if pr_number is None:
+                print("⚠️  Warning: PR number not provided and not found in JSON data")
+                print("   Using default: pr_unknown")
+                pr_number = 'unknown'
 
         success, message, file_path = save_json_data(
             json_data,
@@ -110,8 +152,11 @@ def main():
         else:
             sys.exit(1)
 
+    except KeyboardInterrupt:
+        print("\n❌ Interrupted by user")
+        sys.exit(130)
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

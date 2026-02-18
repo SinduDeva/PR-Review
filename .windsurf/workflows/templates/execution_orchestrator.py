@@ -1,0 +1,427 @@
+#!/usr/bin/env python3
+"""
+Execution Orchestrator - Correct Output Generation Order
+
+EXECUTION ORDER:
+  1. JIRA Update (from in-memory data) - CRITICAL
+  2. Database Update (from in-memory data) - CRITICAL
+  3. JSON Save - SECONDARY
+  4. HTML Generate - OPTIONAL
+
+This ensures JIRA and DB are updated even if JSON/HTML fails.
+
+Usage:
+    python execution_orchestrator.py analysis.json --pr 123
+    cat analysis.json | python execution_orchestrator.py - --pr 123
+    python execution_orchestrator.py --pr 123 --data '{"metadata":{...}}'
+"""
+
+import json
+import sys
+import subprocess
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, Any, Tuple
+
+
+class ExecutionOrchestrator:
+    """Manages execution order: JIRA → DB → JSON → HTML"""
+
+    def __init__(self, analysis_data: Dict[str, Any], pr_number: int = None, verbose: bool = True):
+        self.analysis_data = analysis_data
+        self.pr_number = pr_number or analysis_data.get('metadata', {}).get('pr_number') or 'unknown'
+        self.verbose = verbose
+        self.output_dir = Path(".ai-review")
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        self.phases = {
+            'jira': {'success': False, 'message': '', 'critical': True},
+            'database': {'success': False, 'message': '', 'critical': True},
+            'json': {'success': False, 'message': '', 'critical': False},
+            'html': {'success': False, 'message': '', 'critical': False},
+        }
+
+    def log(self, msg: str, level: str = "INFO"):
+        """Log with visual indicator"""
+        if not self.verbose and level == "INFO":
+            return
+        prefix = {"SUCCESS": "✅", "ERROR": "❌", "WARNING": "⚠️"}.get(level, "→")
+        print(f"{prefix} {msg}")
+
+    # ============================================================================
+    # PHASE 1: JIRA UPDATE (CRITICAL - Happens First)
+    # ============================================================================
+
+    def _format_jira_plain_text(self) -> str:
+        """Format analysis as PLAIN TEXT (no unicode, no colors) for JIRA"""
+        meta = self.analysis_data.get('metadata', {})
+        summ = self.analysis_data.get('summary', {})
+        findings = self.analysis_data.get('findings', [])
+
+        lines = []
+        lines.append("=" * 80)
+        lines.append(f"AUTOMATED PR REVIEW - PR #{self.pr_number}")
+        lines.append("=" * 80)
+        lines.append("")
+        lines.append(f"Branch: {meta.get('branch', 'N/A')}")
+        lines.append(f"Author: {meta.get('author', 'N/A')}")
+        lines.append(f"Review Date: {meta.get('review_date', 'N/A')}")
+        lines.append("")
+
+        # Summary metrics (PLAIN TEXT - no unicode)
+        lines.append("-" * 80)
+        lines.append("SUMMARY")
+        lines.append("-" * 80)
+        lines.append(f"Files Changed: {summ.get('files_changed', 0)}")
+        lines.append(f"Lines Added: +{summ.get('lines_added', 0)}")
+        lines.append(f"Lines Deleted: -{summ.get('lines_deleted', 0)}")
+        lines.append("")
+        lines.append(f"Critical Issues: {summ.get('critical_issues', 0)}")
+        lines.append(f"High Issues: {summ.get('high_issues', 0)}")
+        lines.append(f"Medium Issues: {summ.get('medium_issues', 0)}")
+        lines.append(f"Low Issues: {summ.get('low_issues', 0)}")
+        lines.append("")
+
+        # Critical/High findings
+        critical = [f for f in findings if f.get('severity') in ['CRITICAL', 'HIGH']]
+        if critical:
+            lines.append("-" * 80)
+            lines.append("CRITICAL AND HIGH PRIORITY ISSUES")
+            lines.append("-" * 80)
+            lines.append("")
+
+            for finding in critical[:10]:  # Top 10
+                sev = finding.get('severity', 'UNKNOWN')
+                lines.append(f"[{sev}] {finding.get('title', 'N/A')}")
+                lines.append(f"  File: {finding.get('file', 'N/A')}:{finding.get('line', 'N/A')}")
+                lines.append(f"  Problem: {finding.get('description', 'N/A')}")
+                lines.append(f"  Impact: {finding.get('impact', 'N/A')}")
+                lines.append(f"  Solution: {finding.get('suggestion', 'N/A')}")
+                lines.append("")
+
+            if len(critical) > 10:
+                lines.append(f"... and {len(critical) - 10} more issues")
+                lines.append("")
+        else:
+            lines.append("-" * 80)
+            lines.append("NO CRITICAL OR HIGH PRIORITY ISSUES")
+            lines.append("-" * 80)
+            lines.append("")
+
+        # Test Coverage
+        test = self.analysis_data.get('test_coverage', {})
+        if test:
+            lines.append("-" * 80)
+            lines.append("TEST COVERAGE")
+            lines.append("-" * 80)
+            for metric, val in test.items():
+                lines.append(f"{metric}: {val}")
+            lines.append("")
+
+        # Spring Boot Validation
+        spring = self.analysis_data.get('spring_boot_validation', {})
+        if spring:
+            lines.append("-" * 80)
+            lines.append("SPRING BOOT VALIDATION")
+            lines.append("-" * 80)
+            for cat, val in spring.items():
+                if isinstance(val, dict):
+                    lines.append(f"{cat}: {val.get('score', 'N/A')} ({val.get('status', 'N/A')})")
+                else:
+                    lines.append(f"{cat}: {val}")
+            lines.append("")
+
+        # AI Summary
+        ai_summ = self.analysis_data.get('ai_summary', '')
+        if ai_summ:
+            lines.append("-" * 80)
+            lines.append("ANALYSIS SUMMARY")
+            lines.append("-" * 80)
+            lines.append(ai_summ)
+            lines.append("")
+
+        # Recommendation
+        lines.append("-" * 80)
+        lines.append("RECOMMENDATION")
+        lines.append("-" * 80)
+        if summ.get('critical_issues', 0) > 0:
+            lines.append("ACTION REQUIRED: Review required (critical issues found)")
+        elif summ.get('high_issues', 0) > 0:
+            lines.append("REVIEW RECOMMENDED: High priority issues found")
+        else:
+            lines.append("APPROVED: No critical/high issues detected")
+        lines.append("")
+        lines.append("=" * 80)
+
+        return "\n".join(lines)
+
+    def phase_1_update_jira(self) -> bool:
+        """PHASE 1: Update JIRA (CRITICAL - Happens First)"""
+        try:
+            self.log("\n[PHASE 1/4] UPDATING JIRA (CRITICAL)...", "INFO")
+
+            # Generate plain text JIRA comment
+            jira_text = self._format_jira_plain_text()
+            jira_file = self.output_dir / f"pr-{self.pr_number}-jira-comment.txt"
+
+            with open(jira_file, 'w', encoding='utf-8') as f:
+                f.write(jira_text)
+
+            size = jira_file.stat().st_size
+            msg = f"JIRA comment saved: {jira_file} ({size} bytes)"
+            self.log(f"✅ {msg}", "SUCCESS")
+            self.phases['jira']['success'] = True
+            self.phases['jira']['message'] = msg
+
+            # Try to post to JIRA if uploader exists
+            uploader = Path(".windsurf/workflows/templates/jira_uploader.py")
+            if uploader.exists():
+                try:
+                    result = subprocess.run(
+                        [sys.executable, str(uploader), str(jira_file)],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    if result.returncode == 0:
+                        self.log("✅ Posted to JIRA", "SUCCESS")
+                    else:
+                        self.log(f"⚠️  JIRA post failed: {result.stderr[:100]}", "WARNING")
+                except Exception as e:
+                    self.log(f"⚠️  JIRA posting error: {e}", "WARNING")
+
+            return True
+
+        except Exception as e:
+            msg = f"JIRA update failed: {e}"
+            self.log(f"❌ {msg}", "ERROR")
+            self.phases['jira']['message'] = msg
+            return False
+
+    # ============================================================================
+    # PHASE 2: DATABASE UPDATE (CRITICAL - Happens Second)
+    # ============================================================================
+
+    def phase_2_update_database(self) -> bool:
+        """PHASE 2: Update Database (CRITICAL - Happens Second)"""
+        try:
+            self.log("\n[PHASE 2/4] UPDATING DATABASE (CRITICAL)...", "INFO")
+
+            uploader = Path(".windsurf/workflows/templates/database_uploader.py")
+            if not uploader.exists():
+                msg = "database_uploader.py not found"
+                self.log(f"⚠️  {msg}", "WARNING")
+                self.phases['database']['message'] = msg
+                return False
+
+            # Create temp JSON for database
+            temp_json = self.output_dir / f".temp-pr-{self.pr_number}.json"
+            with open(temp_json, 'w', encoding='utf-8') as f:
+                json.dump(self.analysis_data, f, indent=2, default=str)
+
+            result = subprocess.run(
+                [sys.executable, str(uploader), str(temp_json)],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            try:
+                temp_json.unlink()
+            except:
+                pass
+
+            if result.returncode == 0:
+                msg = "Database update successful"
+                self.log(f"✅ {msg}", "SUCCESS")
+                self.phases['database']['success'] = True
+                self.phases['database']['message'] = msg
+                return True
+            else:
+                raise Exception(result.stderr or "Upload failed")
+
+        except Exception as e:
+            msg = f"Database update failed: {e}"
+            self.log(f"❌ {msg}", "ERROR")
+            self.phases['database']['message'] = msg
+            return False
+
+    # ============================================================================
+    # PHASE 3: JSON SAVE (SECONDARY - Can fail without blocking)
+    # ============================================================================
+
+    def phase_3_save_json(self) -> bool:
+        """PHASE 3: Save JSON (SECONDARY - Can fail without blocking)"""
+        try:
+            self.log("\n[PHASE 3/4] SAVING JSON (SECONDARY)...", "INFO")
+
+            json_file = self.output_dir / f"pr-{self.pr_number}-data.json"
+            json_str = json.dumps(self.analysis_data, indent=2, ensure_ascii=False, default=str)
+
+            with open(json_file, 'w', encoding='utf-8') as f:
+                f.write(json_str)
+
+            size = json_file.stat().st_size
+            msg = f"JSON saved: {json_file} ({size} bytes)"
+            self.log(f"✅ {msg}", "SUCCESS")
+            self.phases['json']['success'] = True
+            self.phases['json']['message'] = msg
+
+            return True
+
+        except Exception as e:
+            msg = f"JSON save failed: {e}"
+            self.log(f"⚠️  {msg}", "WARNING")
+            self.phases['json']['message'] = msg
+            return False
+
+    # ============================================================================
+    # PHASE 4: HTML GENERATE (OPTIONAL - Can fail without blocking)
+    # ============================================================================
+
+    def phase_4_generate_html(self) -> bool:
+        """PHASE 4: Generate HTML (OPTIONAL - Can fail without blocking)"""
+        try:
+            self.log("\n[PHASE 4/4] GENERATING HTML (OPTIONAL)...", "INFO")
+
+            gen = Path(".windsurf/workflows/templates/generate-html.py")
+            if not gen.exists():
+                msg = "generate-html.py not found"
+                self.log(f"⚠️  {msg}", "WARNING")
+                self.phases['html']['message'] = msg
+                return False
+
+            json_file = self.output_dir / f"pr-{self.pr_number}-data.json"
+            if not json_file.exists():
+                msg = "JSON file not available"
+                self.log(f"⚠️  {msg}", "WARNING")
+                self.phases['html']['message'] = msg
+                return False
+
+            result = subprocess.run(
+                [sys.executable, str(gen), str(json_file)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            html_file = self.output_dir / f"pr-{self.pr_number}-data.html"
+
+            if result.returncode == 0 and html_file.exists():
+                size = html_file.stat().st_size
+                msg = f"HTML generated: {html_file} ({size} bytes)"
+                self.log(f"✅ {msg}", "SUCCESS")
+                self.phases['html']['success'] = True
+                self.phases['html']['message'] = msg
+                return True
+            else:
+                raise Exception(result.stderr or "Generation failed")
+
+        except Exception as e:
+            msg = f"HTML generation failed: {e}"
+            self.log(f"⚠️  {msg}", "WARNING")
+            self.phases['html']['message'] = msg
+            return False
+
+    # ============================================================================
+    # ORCHESTRATION
+    # ============================================================================
+
+    def execute(self) -> bool:
+        """Execute in correct order and return success status"""
+        self.log("\n" + "=" * 80, "INFO")
+        self.log("EXECUTION ORCHESTRATOR - CORRECT ORDER", "INFO")
+        self.log("=" * 80, "INFO")
+
+        # PHASE 1: JIRA (CRITICAL)
+        jira_ok = self.phase_1_update_jira()
+
+        # PHASE 2: Database (CRITICAL)
+        db_ok = self.phase_2_update_database()
+
+        # PHASE 3: JSON (SECONDARY - can fail)
+        json_ok = self.phase_3_save_json()
+
+        # PHASE 4: HTML (OPTIONAL - can fail)
+        html_ok = self.phase_4_generate_html()
+
+        # Print summary
+        self._print_summary(jira_ok, db_ok, json_ok, html_ok)
+
+        # Return success if critical phases succeeded
+        return jira_ok and db_ok
+
+    def _print_summary(self, jira_ok: bool, db_ok: bool, json_ok: bool, html_ok: bool):
+        """Print execution summary"""
+        self.log("\n" + "=" * 80, "INFO")
+        self.log("EXECUTION SUMMARY", "INFO")
+        self.log("=" * 80, "INFO")
+        self.log("")
+
+        # Critical phases
+        self.log("CRITICAL PHASES:", "INFO")
+        self.log(f"  {'✅' if jira_ok else '❌'} JIRA Update: {self.phases['jira']['message']}")
+        self.log(f"  {'✅' if db_ok else '❌'} Database Update: {self.phases['database']['message']}")
+
+        # Secondary phases
+        self.log("\nSECONDARY PHASES:", "INFO")
+        self.log(f"  {'✅' if json_ok else '⚠️'} JSON Save: {self.phases['json']['message']}")
+        self.log(f"  {'✅' if html_ok else '⚠️'} HTML Generate: {self.phases['html']['message']}")
+
+        self.log("\n" + "-" * 80, "INFO")
+
+        critical_ok = jira_ok and db_ok
+        if critical_ok:
+            self.log("✅ CRITICAL PHASES SUCCESSFUL - Workflow can continue", "SUCCESS")
+        else:
+            self.log("❌ CRITICAL PHASES FAILED - Workflow should stop", "ERROR")
+
+        if json_ok and html_ok:
+            self.log("✅ Reports fully generated", "SUCCESS")
+        elif json_ok:
+            self.log("⚠️  JSON available but HTML failed", "WARNING")
+        elif html_ok:
+            self.log("⚠️  HTML available but JSON failed", "WARNING")
+        else:
+            self.log("⚠️  JSON and HTML both failed (OK - critical phases succeeded)", "WARNING")
+
+        self.log("\n" + "=" * 80 + "\n", "INFO")
+
+
+def main():
+    """Main entry point"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Execution orchestrator for analysis output")
+    parser.add_argument('analysis_file', nargs='?', default='-', help='JSON analysis file (or - for stdin)')
+    parser.add_argument('--pr', type=int, help='PR number')
+    parser.add_argument('--data', type=str, help='JSON data as string')
+    parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
+
+    args = parser.parse_args()
+
+    try:
+        # Load analysis data
+        if args.data:
+            analysis_data = json.loads(args.data)
+        elif args.analysis_file == '-' or not args.analysis_file:
+            analysis_data = json.load(sys.stdin)
+        else:
+            with open(args.analysis_file, 'r', encoding='utf-8-sig') as f:
+                analysis_data = json.load(f)
+
+        # Execute orchestration
+        orch = ExecutionOrchestrator(analysis_data, pr_number=args.pr, verbose=not args.quiet)
+        success = orch.execute()
+
+        sys.exit(0 if success else 1)
+
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

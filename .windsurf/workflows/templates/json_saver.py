@@ -59,13 +59,31 @@ def main():
     parser = argparse.ArgumentParser(
         description="Save PR review analysis data to JSON file"
     )
-    parser.add_argument('--pr', type=int, required=True, help='PR number')
+    parser.add_argument('--pr', type=str, default='-', help='PR number (or "-" to read from stdin)')
     parser.add_argument('--output', type=str, help='Output file path (optional)')
     parser.add_argument('--data', type=str, help='JSON data as string (optional)')
 
     args = parser.parse_args()
 
     try:
+        # Determine PR number
+        pr_number = None
+        if args.pr == '-':
+            # Read PR number from first line of stdin
+            first_line = sys.stdin.readline().strip()
+            try:
+                pr_number = int(first_line)
+            except ValueError:
+                # If not a number, treat as JSON data
+                import io
+                sys.stdin = io.StringIO(first_line + '\n' + sys.stdin.read())
+                pr_number = None
+        else:
+            try:
+                pr_number = int(args.pr)
+            except ValueError:
+                pr_number = None
+
         # If data provided as argument, use it; otherwise read from stdin
         if args.data:
             json_data = json.loads(args.data)
@@ -73,10 +91,16 @@ def main():
             # Read JSON from stdin (piped from previous step)
             json_data = json.load(sys.stdin)
 
+        # If PR number not found in args, try to extract from JSON
+        if pr_number is None:
+            pr_number = json_data.get('pr_number')
+            if pr_number is None:
+                raise ValueError("PR number not provided and not found in JSON data")
+
         success, message, file_path = save_json_data(
             json_data,
             output_file=args.output,
-            pr_number=args.pr
+            pr_number=pr_number
         )
 
         print(message)

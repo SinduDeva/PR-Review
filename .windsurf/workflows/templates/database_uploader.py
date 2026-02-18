@@ -138,7 +138,7 @@ class DatabaseUploader:
             json_data.get('workspace'),
             json_data.get('source_branch'),
             json_data.get('target_branch'),
-            json_data.get('reviewer', 'Claude AI'),
+            json_data.get('reviewer'),
             json_data.get('workflow_file'),
             json_data.get('workflow_sha256'),
             json_data.get('workflow_start_time'),

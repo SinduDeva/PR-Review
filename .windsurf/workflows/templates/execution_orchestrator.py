@@ -48,7 +48,7 @@ class ExecutionOrchestrator:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.phases = {
-            'jira': {'success': False, 'message': '', 'critical': True},
+            'jira': {'success': False, 'message': '', 'critical': False},  # Non-blocking output
             'database': {'success': False, 'message': '', 'critical': True},
             'cli': {'success': False, 'message': '', 'critical': False},
             'json': {'success': False, 'message': '', 'critical': False},
@@ -309,9 +309,9 @@ class ExecutionOrchestrator:
         return "\n".join(lines)
 
     def phase_1_update_jira(self) -> bool:
-        """PHASE 1: Update JIRA (CRITICAL - Happens First)"""
+        """PHASE 1: Update JIRA (NON-BLOCKING - Workflow continues if fails)"""
         try:
-            self.log("\n[PHASE 1/4] UPDATING JIRA (CRITICAL)...", "INFO")
+            self.log("\n[PHASE 1/4] UPDATING JIRA (NON-BLOCKING)...", "INFO")
 
             # Generate plain text JIRA comment
             jira_text = self._format_jira_plain_text()
@@ -339,17 +339,17 @@ class ExecutionOrchestrator:
                     if result.returncode == 0:
                         self.log("✅ Posted to JIRA", "SUCCESS")
                     else:
-                        self.log(f"⚠️  JIRA post failed: {result.stderr[:100]}", "WARNING")
+                        self.log(f"⚠️  JIRA post failed: {result.stderr[:100]} (comment saved to {jira_file})", "WARNING")
                 except Exception as e:
-                    self.log(f"⚠️  JIRA posting error: {e}", "WARNING")
+                    self.log(f"⚠️  JIRA posting error: {e} (comment saved to {jira_file})", "WARNING")
 
             return True
 
         except Exception as e:
-            msg = f"JIRA update failed: {e}"
-            self.log(f"❌ {msg}", "ERROR")
+            msg = f"JIRA update failed: {e} (check {self.output_dir / f'pr-{self.pr_number}-jira-comment.txt'} for manual posting)"
+            self.log(f"⚠️  {msg}", "WARNING")
             self.phases['jira']['message'] = msg
-            return False
+            return True  # Non-blocking: return True so workflow continues
 
     # ============================================================================
     # PHASE 2: DATABASE UPDATE (CRITICAL - Happens Second)
@@ -562,8 +562,9 @@ class ExecutionOrchestrator:
         # Print summary
         self._print_summary(jira_ok, db_ok, cli_ok, json_ok, html_ok)
 
-        # Return success if critical phases succeeded
-        return jira_ok and db_ok
+        # Return success if database succeeded (JIRA is non-blocking)
+        # JIRA failure is logged but doesn't fail the workflow
+        return db_ok
 
     def _print_summary(self, jira_ok: bool, db_ok: bool, cli_ok: bool, json_ok: bool, html_ok: bool):
         """Print execution summary"""

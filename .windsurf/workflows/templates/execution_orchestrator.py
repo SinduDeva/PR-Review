@@ -23,7 +23,13 @@ import sys
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
+
+# Import PR detector
+try:
+    from pr_detector import PRDetector
+except ImportError:
+    PRDetector = None
 
 
 class ExecutionOrchestrator:
@@ -31,8 +37,13 @@ class ExecutionOrchestrator:
 
     def __init__(self, analysis_data: Dict[str, Any], pr_number: int = None, verbose: bool = True):
         self.analysis_data = analysis_data
-        self.pr_number = pr_number or analysis_data.get('metadata', {}).get('pr_number') or 'unknown'
         self.verbose = verbose
+
+        # Detect PR number with fallback
+        self.pr_number = self._detect_pr_number(pr_number)
+        if not self.pr_number:
+            raise ValueError("❌ PR NUMBER NOT FOUND - Cannot proceed without PR number")
+
         self.output_dir = Path(".ai-review")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -43,6 +54,41 @@ class ExecutionOrchestrator:
             'json': {'success': False, 'message': '', 'critical': False},
             'html': {'success': False, 'message': '', 'critical': False},
         }
+
+    def _detect_pr_number(self, cli_pr: Optional[int] = None) -> Optional[int]:
+        """
+        Detect PR number with priority:
+        1. CLI argument
+        2. Environment variables
+        3. Git branch parsing
+        4. Git commit message
+        5. JSON metadata
+
+        Returns:
+            PR number or None
+        """
+        # Priority 1: CLI argument
+        if cli_pr and cli_pr > 0:
+            self.log(f"✅ PR detected from CLI: {cli_pr}", "SUCCESS")
+            return cli_pr
+
+        # Priority 2-4: Use PRDetector if available
+        if PRDetector:
+            detector = PRDetector(verbose=False)
+            pr_num = detector.detect(cli_pr=None)
+            if pr_num:
+                self.log(f"✅ PR detected: {pr_num}", "SUCCESS")
+                return pr_num
+
+        # Priority 5: JSON metadata
+        json_pr = self.analysis_data.get('metadata', {}).get('pr_number')
+        if json_pr and json_pr > 0:
+            self.log(f"✅ PR detected from JSON metadata: {json_pr}", "SUCCESS")
+            return json_pr
+
+        # Not found
+        self.log("❌ PR number not found in any source", "ERROR")
+        return None
 
     def log(self, msg: str, level: str = "INFO"):
         """Log with visual indicator"""

@@ -2169,16 +2169,21 @@ For each ticket_id in ticket_list:
    {
      "resources": [
        {
-         "cloudId": "a9153d1c-fa85-4747-8060-2bd3731a74a6",  # UUID format (REQUIRED)
-         "name": "Applied Data Finance",
-         "url": "https://applieddatafinance.atlassian.net"
+         "cloudId": "{your-cloud-id-uuid}",  # UUID format (REQUIRED) - Retrieved dynamically
+         "name": "Your Atlassian Instance",
+         "url": "https://your-instance.atlassian.net"
        }
      ]
    }
 
    EXTRACT: cloud_id = response.resources[0].cloudId  # Get UUID, not slug
 
-   ⚠️ CRITICAL: Use the UUID format, NOT the domain slug "applieddatafinance"
+   ⚠️ CRITICAL: Use the UUID format from the response, NOT hardcoded values
+
+   IF no resources returned:
+     - Log: "⚠️ No Atlassian resources accessible. JIRA posting will be skipped."
+     - Save comment file for manual posting: .ai-review/pr-{pr_number}-jira-comment.txt
+     - Continue workflow (non-blocking failure)
 
 2. Read the JIRA comment file generated in Step 6c:
    File: .ai-review/pr-{pr_number}-jira-comment.txt
@@ -2186,8 +2191,8 @@ For each ticket_id in ticket_list:
 
 3. Post comment to JIRA:
    Call: mcp0_addCommentToJiraIssue(
-     cloudId="{cloud_id}",        # Use UUID: a9153d1c-fa85-4747-8060-2bd3731a74a6
-     issueIdOrKey="{ticket_id}",  # Example: CPI-8408
+     cloudId="{cloud_id}",        # Use dynamically retrieved UUID
+     issueIdOrKey="{ticket_id}",  # Example: PROJ-8408
      commentBody=<contents of jira-comment.txt>
    )
 
@@ -2227,11 +2232,11 @@ For each ticket_id in ticket_list:
 
 If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
 
-1. **Environment Variables** (must be set):
+1. **Environment Variables** (Cloud ID will be fetched dynamically):
    ```bash
-   ATLASSIAN_CLOUD_ID=a9153d1c-fa85-4747-8060-2bd3731a74a6  # UUID format
-   ATLASSIAN_DOMAIN=applieddatafinance.atlassian.net
-   ATLASSIAN_TOKEN=your_api_token                          # OAuth/API token
+   # DO NOT hardcode ATLASSIAN_CLOUD_ID - it will be retrieved from mcp0_getAccessibleAtlassianResources()
+   ATLASSIAN_DOMAIN=your-instance.atlassian.net           # Your JIRA domain
+   ATLASSIAN_TOKEN=your_api_token                         # OAuth/API token for authentication
    ```
 
 2. **MCP Server Configuration** (claude_desktop_config.json):
@@ -2242,7 +2247,7 @@ If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
          "command": "python3",
          "args": ["-m", "mcp_server_atlassian"],
          "env": {
-           "ATLASSIAN_CLOUD_ID": "a9153d1c-fa85-4747-8060-2bd3731a74a6",
+           "ATLASSIAN_DOMAIN": "your-instance.atlassian.net",
            "ATLASSIAN_TOKEN": "${ATLASSIAN_TOKEN}"
          }
        }

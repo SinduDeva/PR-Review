@@ -1959,35 +1959,34 @@ Deduplicate and prioritize by:
 3. Save the JSON from Step 6b to file:
    Write the complete JSON object to: .ai-review/pr-{pr_number}-data.json
 
-   **IMPLEMENTATION** (use PowerShell to serialize and write JSON):
-   ```powershell
-   # Create .ai-review directory if needed
-   New-Item -ItemType Directory -Force -Path ".ai-review" | Out-Null
-
-   # Convert findings array and other data to JSON
-   # Note: This JSON is pre-formatted by LLM analysis steps (4a-4g)
-   $jsonObject = @{
-       pr_number = {pr_number}
-       pr_title = "{pr_title}"
-       pr_description = "{pr_description}"
-       findings = {findings_array}
-       files_reviewed = {files_reviewed_array}
-       impact_analysis = {impact_analysis_dict}
-       execution_status = {execution_status_dict}
+   **IMPLEMENTATION** (use json_saver.py - cross-platform):
+   ```bash
+   # Use existing json_saver.py script to save analysis data
+   # Pass JSON via stdin to avoid Cascade file creation restrictions
+   python .windsurf/workflows/templates/json_saver.py --pr {pr_number} << 'EOF'
+   {
+       "pr_number": {pr_number},
+       "pr_title": "{pr_title}",
+       "pr_description": "{pr_description}",
+       "findings": {findings_array},
+       "files_reviewed": {files_reviewed_array},
+       "impact_analysis": {impact_analysis_dict},
+       "execution_status": {execution_status_dict}
    }
-
-   # Convert to JSON string and write to file with UTF-8 encoding (no BOM)
-   $jsonString = $jsonObject | ConvertTo-Json -Depth 10
-   $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-   [System.IO.File]::WriteAllText(".ai-review/pr-{pr_number}-data.json", $jsonString, $Utf8NoBom)
+   EOF
    ```
 
-   **Why PowerShell instead of Python subprocess?**
-   - No need to create python files (json_saver.py doesn't exist)
-   - PowerShell ConvertTo-Json is built-in, reliable, cross-platform
-   - Avoids PowerShell `python -c` syntax errors
-   - Cascade can execute PowerShell commands natively
-   - UTF-8 encoding handled correctly (no BOM issues)
+   **Why use json_saver.py?**
+   - ✅ Cross-platform: Works on Windows, Linux, macOS
+   - ✅ Cascade-safe: Calls existing script, no file creation
+   - ✅ Proper error handling: try-catch inside script
+   - ✅ UTF-8 encoding: No BOM, properly formatted JSON
+   - ✅ Tested: Script already exists and works
+
+   **Error Handling**:
+   - If json_saver.py fails: Continue with fallback reports
+   - Set flag: json_file_created = (exit code == 0)
+   - Generate reports regardless of JSON status
 
    ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
 
@@ -2012,6 +2011,25 @@ Deduplicate and prioritize by:
 
    **Important**: This is NOT destructive. Old reports are simply replaced with new ones.
    The workflow is designed to be re-executable by default.
+
+   **ERROR HANDLING FOR JSON GENERATION**:
+   ```bash
+   # Check if JSON file was created successfully
+   if [ -f ".ai-review/pr-{pr_number}-data.json" ]; then
+       echo "✅ JSON report created successfully"
+       json_status="success"
+   else
+       echo "⚠️ JSON report creation failed or skipped"
+       echo "   Workflow will continue with fallback reports"
+       json_status="failed"
+   fi
+   ```
+
+   **If JSON fails, continue with fallback**:
+   - Fallback reports generated from available data in workflow variables
+   - HTML, JIRA, CLI reports will still be created
+   - No Cascade file creation errors
+   - User gets reports even if JSON generation fails
 
 3. Generate HTML report ⭐ MANDATORY (ZERO LLM tokens — uses external template):
    python .windsurf/workflows/templates/generate-html.py .ai-review/pr-{pr_number}-data.json

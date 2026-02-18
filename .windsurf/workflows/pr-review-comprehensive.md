@@ -1066,7 +1066,7 @@ VALUES:
 
 ---
 
-### Step 4f: API Change Impact Analysis (PR Changes Only)
+#### 4f: API Change Impact Analysis (PR Changes Only)
 
 **Goal**: Analyze API changes from PR to detect breaking changes, affected endpoints, and consumer impacts
 
@@ -1218,7 +1218,7 @@ execute_api_impact_analysis()
 
 ---
 
-### Step 4g: Test Coverage Validation (Against Changed Files)
+#### 4g: Test Coverage Validation (Against Changed Files)
 
 **For each non-test file changed in PR**:
 

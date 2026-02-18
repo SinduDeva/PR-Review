@@ -463,15 +463,15 @@ class WorkflowOrchestrator:
         """Verify essential reports were generated (Step 6f)"""
         self.print_section("STEP 6f: Verify Reports Generated")
 
-        # Only JSON is required (critical output)
+        # Critical files (must exist for workflow success)
         required_files = [
             ("JSON Data", f"pr-{self.pr_number}-data.json"),
+            ("JIRA Comment", f"pr-{self.pr_number}-jira-comment.txt"),  # CRITICAL
         ]
 
-        # HTML, JIRA comment, CLI are optional (graceful degradation)
+        # Optional files (nice-to-have, graceful degradation)
         optional_files = [
             ("HTML Report", f"pr-{self.pr_number}-data.html"),
-            ("JIRA Comment", f"pr-{self.pr_number}-jira-comment.txt"),
         ]
 
         all_good = True
@@ -557,18 +557,19 @@ class WorkflowOrchestrator:
         self.validate_api_impact()  # Logs info but doesn't block
         self.log("API impact validation complete (non-blocking)", "INFO")
 
-        # Step 6c: Generate HTML
+        # Step 6c: Generate HTML (OPTIONAL - can fail)
         if not self.generate_html_report():
-            self.log("HTML report generation failed (non-critical)", "WARNING")
+            self.log("HTML report generation failed (optional)", "WARNING")
             # Don't return False - continue with fallback options
 
-        # Step 6d: Generate JIRA
+        # Step 6d: Generate JIRA (CRITICAL - must succeed)
         if not self.generate_jira_comment():
-            self.log("JIRA comment generation failed (non-critical)", "WARNING")
+            self.log("JIRA comment generation FAILED (CRITICAL)", "ERROR")
+            return False  # ← CRITICAL: JIRA must succeed
 
-        # Step 6e: Generate CLI
+        # Step 6e: Generate CLI (SECONDARY - can fail)
         if not self.generate_cli_output():
-            self.log("CLI output generation failed (non-critical)", "WARNING")
+            self.log("CLI output generation failed (secondary)", "WARNING")
 
         # Step 6f: Verify reports
         if not self.verify_reports():

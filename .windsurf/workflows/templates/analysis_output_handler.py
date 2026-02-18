@@ -126,18 +126,45 @@ class AnalysisOutputHandler:
             return False, message
 
     def output_jira_comment(self) -> Tuple[bool, str]:
-        """Generate JIRA comment file (non-blocking)"""
+        """Generate JIRA comment from analysis data (CRITICAL - no JSON dependency)
+
+        NOTE: This works DIRECTLY from in-memory analysis_data, not from JSON file.
+        JSON may not exist yet (it's created later in the pipeline).
+        """
         try:
+            # Use execution_orchestrator's JIRA formatter which works from in-memory data
             jira_file = self.output_dir / f"pr-{self.pr_number}-jira-comment.txt"
 
-            # Try to use jira_formatter.py
-            formatter = Path(".windsurf/workflows/templates/jira_formatter.py")
-            if formatter.exists():
+            # IMPORTANT: Pass analysis_data directly, not JSON file path
+            # This allows JIRA to be created BEFORE JSON is saved
+            try:
+                from execution_orchestrator import ExecutionOrchestrator
+                orchestrator = ExecutionOrchestrator(self.analysis_data, pr_number=self.pr_number, verbose=False)
+                jira_text = orchestrator._format_jira_plain_text()
+
+                with open(jira_file, 'w', encoding='utf-8') as f:
+                    f.write(jira_text)
+
+                file_size = jira_file.stat().st_size
+                message = f"JIRA comment generated: {jira_file} ({file_size} bytes)"
+                self.log(f"✅ {message}", "SUCCESS")
+                self.results['jira']['success'] = True
+                self.results['jira']['message'] = message
+                self.results['jira']['file'] = str(jira_file)
+                return True, message
+            except ImportError:
+                # Fallback: Try jira_formatter.py if available
+                formatter = Path(".windsurf/workflows/templates/jira_formatter.py")
+                if not formatter.exists():
+                    raise FileNotFoundError("jira_formatter.py not found")
+
                 import subprocess
                 json_file = self.output_dir / f"pr-{self.pr_number}-data.json"
 
-                # Ensure JSON exists first
+                # NOTE: For jira_formatter.py, we MUST have JSON first
+                # Create JSON if it doesn't exist (will be saved again later, but needed here)
                 if not json_file.exists():
+                    self.log("⚠️  JIRA formatter requires JSON - creating early (suboptimal)", "WARNING")
                     self.output_json()
 
                 result = subprocess.run(
@@ -167,34 +194,15 @@ class AnalysisOutputHandler:
             return False, message
 
     def output_cli(self) -> Tuple[bool, str]:
-        """Output CLI summary to stdout (non-blocking)"""
+        """Output CLI summary from in-memory data (SECONDARY - no JSON dependency)
+
+        NOTE: Works DIRECTLY from in-memory analysis_data, not from JSON file.
+        JSON may not exist yet (it's created later in the pipeline).
+        Uses minimal but complete CLI output generated from in-memory data.
+        """
         try:
-            cli_formatter = Path(".windsurf/workflows/templates/cli_formatter.py")
-            if cli_formatter.exists():
-                import subprocess
-                json_file = self.output_dir / f"pr-{self.pr_number}-data.json"
-
-                # Ensure JSON exists first
-                if not json_file.exists():
-                    self.output_json()
-
-                result = subprocess.run(
-                    [sys.executable, str(cli_formatter), str(json_file)],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-
-                if result.returncode == 0:
-                    self.log("✅ CLI output generated", "SUCCESS")
-                    self.results['cli']['success'] = True
-                    self.results['cli']['output'] = result.stdout
-                    return True, "CLI output generated"
-                else:
-                    raise Exception(result.stderr or "CLI output generation failed")
-            else:
-                # Fallback: generate minimal CLI output from analysis data
-                return self._generate_minimal_cli_output()
+            # Generate CLI output directly from in-memory data (no JSON dependency)
+            return self._generate_minimal_cli_output()
 
         except Exception as e:
             message = f"CLI output generation failed: {e}"
@@ -244,15 +252,36 @@ class AnalysisOutputHandler:
             return False, message
 
     def output_database(self) -> Tuple[bool, str]:
-        """Upload to database (non-blocking)"""
+        """Upload to database from in-memory data (CRITICAL - no JSON dependency)
+
+        NOTE: This works DIRECTLY from in-memory analysis_data, not from JSON file.
+        JSON may not exist yet (it's created later in the pipeline).
+        """
         try:
-            db_uploader = Path(".windsurf/workflows/templates/database_uploader.py")
-            if db_uploader.exists():
+            # Use DatabaseUploader class directly with in-memory data
+            # This allows database upload BEFORE JSON is saved
+            try:
+                from database_uploader import DatabaseUploader
+                uploader = DatabaseUploader()
+                run_id = uploader.upload(self.analysis_data)
+
+                self.log(f"✅ Database upload successful (Run ID: {run_id})", "SUCCESS")
+                self.results['database']['success'] = True
+                self.results['database']['message'] = f"Uploaded to database (Run ID: {run_id})"
+                return True, f"Uploaded to database (Run ID: {run_id})"
+            except ImportError:
+                # Fallback: Use subprocess if direct import fails
+                db_uploader = Path(".windsurf/workflows/templates/database_uploader.py")
+                if not db_uploader.exists():
+                    raise FileNotFoundError("database_uploader.py not found")
+
                 import subprocess
                 json_file = self.output_dir / f"pr-{self.pr_number}-data.json"
 
-                # Ensure JSON exists first
+                # NOTE: For database_uploader subprocess, we MUST have JSON first
+                # Create JSON if it doesn't exist (will be saved again later)
                 if not json_file.exists():
+                    self.log("⚠️  Database uploader requires JSON - creating early (suboptimal)", "WARNING")
                     self.output_json()
 
                 result = subprocess.run(
@@ -269,9 +298,6 @@ class AnalysisOutputHandler:
                     return True, "Uploaded to database"
                 else:
                     raise Exception(result.stderr or "Database upload failed")
-            else:
-                self.log("⚠️  database_uploader.py not found (skipping)", "WARNING")
-                return False, "database_uploader.py not found"
 
         except Exception as e:
             message = f"Database upload failed: {e}"
@@ -280,19 +306,32 @@ class AnalysisOutputHandler:
             return False, message
 
     def output_all(self) -> Dict[str, Any]:
-        """Generate all output formats (non-blocking - continues on failures)"""
+        """Generate all output formats in CORRECT execution order
+
+        CRITICAL ORDER (for proper workflow execution):
+        1. JIRA (critical - in-memory data, no JSON needed)
+        2. Database (critical - in-memory data, no JSON needed)
+        3. CLI (secondary - in-memory data)
+        4. JSON (secondary - archive data for reports)
+        5. HTML (optional - uses JSON file)
+        """
         self.log("\n" + "="*80, "INFO")
-        self.log("GENERATING ANALYSIS OUTPUT", "INFO")
+        self.log("GENERATING ANALYSIS OUTPUT (Correct Order)", "INFO")
         self.log("="*80 + "\n", "INFO")
 
-        # Always output JSON first (needed for other formats)
-        self.output_json()
+        # PHASE 1: CRITICAL OUTPUTS (work with in-memory data, not JSON)
+        self.log("PHASE 1: Critical Outputs (in-memory data)", "INFO")
+        self.output_jira_comment()      # JIRA (critical, first)
+        self.output_database()           # Database (critical, second)
 
-        # Generate all other formats (non-blocking)
-        self.output_html()
-        self.output_jira_comment()
-        self.output_cli()
-        self.output_database()
+        # PHASE 2: SECONDARY OUTPUTS (can work with in-memory data)
+        self.log("\nPHASE 2: Secondary Outputs", "INFO")
+        self.output_cli()                # CLI (from in-memory)
+        self.output_json()               # JSON (save after critical outputs)
+
+        # PHASE 3: OPTIONAL OUTPUTS (can use JSON if it exists)
+        self.log("\nPHASE 3: Optional Outputs", "INFO")
+        self.output_html()               # HTML (uses JSON)
 
         # Print summary
         self._print_summary()

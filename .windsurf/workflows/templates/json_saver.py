@@ -9,6 +9,7 @@ report generation (HTML, JIRA, CLI).
 import json
 import sys
 import os
+import select
 from pathlib import Path
 
 
@@ -50,6 +51,40 @@ def save_json_data(json_data, output_file=None, pr_number=None):
     except Exception as e:
         message = f"❌ Error saving JSON: {e}"
         return False, message, output_file
+
+
+def read_stdin_with_timeout(timeout_seconds=2):
+    """
+    Read from stdin with timeout to prevent hanging.
+
+    Args:
+        timeout_seconds: How long to wait for stdin (default: 2 seconds)
+
+    Returns:
+        (success: bool, content: str, is_piped: bool)
+    """
+    try:
+        # Check if stdin is piped (not a terminal)
+        if sys.stdin.isatty():
+            return False, "", False
+
+        # Use select to check if data is available with timeout
+        ready, _, _ = select.select([sys.stdin], [], [], timeout_seconds)
+
+        if not ready:
+            # Timeout - no data available
+            return False, "", True
+
+        # Read available data
+        stdin_content = sys.stdin.read().strip()
+
+        if not stdin_content:
+            return False, "", True
+
+        return True, stdin_content, True
+
+    except Exception as e:
+        return False, str(e), True
 
 
 def validate_json_data(json_data):
@@ -99,23 +134,31 @@ def main():
                 print(f"   Position {e.pos}: {e.msg}")
                 sys.exit(1)
         else:
-            # Read JSON from stdin (piped from previous step)
+            # Try to read JSON from stdin with timeout
+            stdin_ok, stdin_content, is_piped = read_stdin_with_timeout(timeout_seconds=2)
+
+            if not stdin_ok:
+                if not is_piped:
+                    print("❌ Error: No piped input detected")
+                    print("\n   Usage options:")
+                    print("   1. Pipe JSON data: echo '{...}' | json_saver.py --pr 123")
+                    print("   2. Provide via --data: json_saver.py --pr 123 --data '{...}'")
+                    print("   3. Provide file: cat data.json | json_saver.py --pr 123")
+                    sys.exit(1)
+                else:
+                    print(f"❌ Error: No JSON data received from stdin (timeout after 2 seconds)")
+                    print(f"   Received: {repr(stdin_content[:100] if stdin_content else 'empty')}")
+                    sys.exit(1)
+
+            # Try to parse as JSON
             try:
-                stdin_content = sys.stdin.read().strip()
-
-                if not stdin_content:
-                    raise ValueError("No JSON data received from stdin")
-
-                # Try to parse as JSON
                 json_data = json.loads(stdin_content)
-
             except json.JSONDecodeError as e:
                 print(f"❌ Invalid JSON received from stdin: {e}")
                 print(f"   Position {e.pos}: {e.msg}")
-                print(f"   Context: {stdin_content[max(0, e.pos-40):min(len(stdin_content), e.pos+40)]}")
-                sys.exit(1)
-            except ValueError as e:
-                print(f"❌ Error reading from stdin: {e}")
+                context_start = max(0, e.pos - 40)
+                context_end = min(len(stdin_content), e.pos + 40)
+                print(f"   Context: ...{stdin_content[context_start:context_end]}...")
                 sys.exit(1)
 
         # Validate JSON structure

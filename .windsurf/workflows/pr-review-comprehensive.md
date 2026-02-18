@@ -1959,45 +1959,29 @@ Deduplicate and prioritize by:
 3. Save the JSON from Step 6b to file:
    Write the complete JSON object to: .ai-review/pr-{pr_number}-data.json
 
-   **IMPLEMENTATION** (serialize to string first):
-   ```python
-   import json
-   import os
-
-   # Ensure .ai-review/ directory exists
-   os.makedirs('.ai-review', exist_ok=True)
-
-   # Get the JSON data dict from Step 6b analysis
-   json_data = {
-       "metadata": {...},
-       "summary": {...},
-       "findings": [...],
-       "impact_analysis": {...},
-       # ... all other fields from schema
-   }
-
-   # ✅ CRITICAL: Serialize dict to JSON string FIRST
-   json_string = json.dumps(json_data, indent=2)
-
-   # Write the JSON string to file (NOT the dict object)
-   json_file_path = f'.ai-review/pr-{pr_number}-data.json'
-
-   # Use Write tool with string content
-   Write(
-       file_path=json_file_path,
-       content=json_string  # ← Pass serialized JSON STRING, not dict
-   )
-
-   print(f"✅ JSON saved: {json_file_path}")
-   print(f"   File size: {len(json_string)} bytes")
+   **IMPLEMENTATION** (use Python script to save JSON):
+   ```bash
+   # Save JSON data to file using dedicated script
+   python .windsurf/workflows/templates/json_saver.py \
+     --pr {pr_number} \
+     --output .ai-review/pr-{pr_number}-data.json \
+     --data '{json_data_string}'
    ```
 
-   **Why serialize first?**
-   - Write tool expects `content: string` parameter
-   - Python dict cannot be passed directly
-   - `json.dumps()` converts dict → JSON string
-   - `indent=2` makes output human-readable
-   - All data is preserved in serialization
+   **How json_saver.py works:**
+   - Accepts JSON data via `--data` parameter or stdin
+   - Serializes Python dict to JSON string via `json.dumps()`
+   - Writes to file with UTF-8 encoding (no BOM)
+   - Creates `.ai-review/` directory if needed
+   - Returns success/failure status
+   - Handles all encoding/serialization automatically
+
+   **Why use subprocess instead of Write tool?**
+   - Write tool is not available in Cascade/SWE 1.5 context
+   - Python subprocess execution is reliable and cross-platform
+   - json_saver.py handles all serialization/encoding
+   - Follows pattern used by generate-html.py, jira_formatter.py, etc.
+   - Ensures consistent file handling across all tools
 
    ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
 

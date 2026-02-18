@@ -228,9 +228,9 @@ class WorkflowLock:
                 return False, f"Workflow file not found: {self.workflow_file}"
 
             if platform.system() == 'Windows':
-                # On Windows, set file as read-only via attrib command
+                # On Windows, remove write permissions (safe and portable)
                 try:
-                    os.system(f'attrib +r "{self.workflow_file}"')
+                    os.chmod(self.workflow_file, stat.S_IREAD)
                     return True, f"✅ Workflow file locked (read-only)"
                 except Exception as e:
                     return False, f"❌ Could not lock workflow file: {e}"
@@ -264,9 +264,9 @@ class WorkflowLock:
                 return False, f"Workflow file not found: {self.workflow_file}"
 
             if platform.system() == 'Windows':
-                # On Windows, remove read-only via attrib command
+                # On Windows, restore write permissions (safe and portable)
                 try:
-                    os.system(f'attrib -r "{self.workflow_file}"')
+                    os.chmod(self.workflow_file, stat.S_IREAD | stat.S_IWRITE)
                     return True, f"✅ Workflow file unlocked (writable)"
                 except Exception as e:
                     return False, f"❌ Could not unlock workflow file: {e}"

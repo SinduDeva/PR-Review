@@ -269,11 +269,13 @@ def format_jira_comment(data):
     comment.append("----")
     comment.append("")
     
-    # Links to full reports
+    # Links to full reports (using absolute paths)
+    import os
+    report_dir = os.path.abspath('.ai-review')
     comment.append("h3. 📄 Full Report")
     comment.append("")
-    comment.append(f"[View Complete HTML Report|file://.ai-review/pr-{metadata['pr_number']}-data.html]")
-    comment.append(f"[View JSON Data|file://.ai-review/pr-{metadata['pr_number']}-data.json]")
+    comment.append(f"[View Complete HTML Report|file:///{report_dir}/pr-{metadata['pr_number']}-data.html]")
+    comment.append(f"[View JSON Data|file:///{report_dir}/pr-{metadata['pr_number']}-data.json]")
     comment.append("")
     comment.append("----")
     comment.append("")

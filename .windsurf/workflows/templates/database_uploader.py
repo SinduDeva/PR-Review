@@ -16,8 +16,10 @@ from typing import Dict, List, Any, Optional
 class DatabaseUploader:
     """Uploads PR review data to MySQL pr_review_audit database"""
 
-    def __init__(self, host: str = 'localhost', user: str = 'root', password: str = '', db: str = 'pr_review_audit'):
+    def __init__(self, host: str = None, user: str = None, password: str = None, db: str = None):
         """Initialize database connection"""
+        import os
+
         try:
             import mysql.connector
             self.mysql = mysql.connector
@@ -26,10 +28,11 @@ class DatabaseUploader:
             print("   Install with: pip install mysql-connector-python")
             raise
 
-        self.host = host
-        self.user = user
-        self.password = password
-        self.db = db
+        # Use environment variables with fallback defaults
+        self.host = host or os.environ.get('DB_HOST', 'localhost')
+        self.user = user or os.environ.get('DB_USER', 'root')
+        self.password = password or os.environ.get('DB_PASSWORD', '')
+        self.db = db or os.environ.get('DB_NAME', 'pr_review_audit')
         self.conn = None
         self.cursor = None
 

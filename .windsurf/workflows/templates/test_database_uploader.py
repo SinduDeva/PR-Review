@@ -329,14 +329,15 @@ def test_database_connection():
     print_section("3. TESTING DATABASE CONNECTION")
 
     try:
+        import os
         import mysql.connector
 
         try:
             conn = mysql.connector.connect(
-                host='localhost',
-                user='root',
-                password='',
-                database='pr_review_audit'
+                host=os.environ.get('DB_HOST', 'localhost'),
+                user=os.environ.get('DB_USER', 'root'),
+                password=os.environ.get('DB_PASSWORD', ''),
+                database=os.environ.get('DB_NAME', 'pr_review_audit')
             )
             cursor = conn.cursor()
 

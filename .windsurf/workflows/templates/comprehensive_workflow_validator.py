@@ -544,12 +544,13 @@ class WorkflowValidator:
             # Test 7b: Check database connectivity
             self.log("7b. Testing database connection...", "INFO")
             try:
+                import os
                 import mysql.connector
                 conn = mysql.connector.connect(
-                    host='localhost',
-                    user='root',
-                    password='',
-                    database='pr_review_audit'
+                    host=os.environ.get('DB_HOST', 'localhost'),
+                    user=os.environ.get('DB_USER', 'root'),
+                    password=os.environ.get('DB_PASSWORD', ''),
+                    database=os.environ.get('DB_NAME', 'pr_review_audit')
                 )
                 cursor = conn.cursor()
                 self.log("✅ Connected to MySQL pr_review_audit database", "SUCCESS")

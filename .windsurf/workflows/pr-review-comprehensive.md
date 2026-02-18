@@ -219,6 +219,70 @@ Result: Workflow file becomes READ-ONLY during execution.
         This ensures workflow integrity throughout execution.
 ```
 
+**VALIDATE WORKFLOW STRUCTURE** (internal validation - silent):
+
+```bash
+1. Read complete workflow file from disk:
+   workflow_file = .windsurf/workflows/pr-review-comprehensive.md
+   workflow_content = read file contents
+
+2. Parse YAML frontmatter:
+   - Extract auto_execution_mode (expect: 3)
+   - Extract description
+
+3. Count and validate workflow structure:
+   Main Steps (### Step X:):
+   - Expected: 10 total (Step 0 through Step 9)
+   - Line 205: ### Step 0
+   - Line 336: ### Step 1
+   - Line 379: ### Step 2
+   - Line 702: ### Step 3
+   - Line 771: ### Step 4
+   - Line 1273: ### Step 5
+   - Line 1497: ### Step 6
+   - Line 1959: ### Step 7
+   - Line 2036: ### Step 8
+   - Line 2101: ### Step 9
+
+   Sub-Steps (#### X[a-z]:):
+   - Step 4: Expected 7 (4a, 4b, 4c, 4d, 4e, 4f, 4g)
+   - Step 5: Expected 2 (5a, 5b)
+   - Step 6: Expected 3 (6a, 6b, 6c)
+   - Step 7: Expected 2 (7a, 7b)
+   - Total sub-steps: 14
+
+4. Validate structure consistency:
+   - All main steps use ### heading level ✅
+   - All sub-steps use #### heading level ✅
+   - No sub-steps use ### format (all use #### Xa:) ✅
+   - File size approximately 2100+ lines ✅
+   - YAML frontmatter present ✅
+
+5. Log validation results to execution_status:
+   {
+     "workflow_validation": {
+       "checked_at": "{timestamp}",
+       "file_path": ".windsurf/workflows/pr-review-comprehensive.md",
+       "main_steps_found": 10,
+       "sub_steps_found": 14,
+       "structure_valid": true,
+       "warnings": [],
+       "status": "valid"
+     }
+   }
+
+6. If structure INVALID, log warnings but CONTINUE (don't block):
+   - Log any missing steps
+   - Log any hierarchy inconsistencies
+   - Set status to "partial_valid"
+   - Add warning messages to execution_status.workflow_validation.warnings
+   - Proceed to PR auto-detection (don't abort)
+
+7. If structure VALID:
+   - Log status: "valid"
+   - Proceed to PR auto-detection
+```
+
 **Actions** (with error handling):
 ```bash
 PRIMARY METHOD:

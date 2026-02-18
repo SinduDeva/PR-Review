@@ -5,10 +5,12 @@ Execution Orchestrator - Correct Output Generation Order
 EXECUTION ORDER:
   1. JIRA Update (from in-memory data) - CRITICAL
   2. Database Update (from in-memory data) - CRITICAL
-  3. JSON Save - SECONDARY
-  4. HTML Generate - OPTIONAL
+  3. CLI Generate - SECONDARY
+  4. JSON Save - SECONDARY
+  5. HTML Generate - OPTIONAL
 
-This ensures JIRA and DB are updated even if JSON/HTML fails.
+This ensures JIRA and DB are updated before any local output generation.
+JIRA/CLI/JSON are text formats. HTML is visual.
 
 Usage:
     python execution_orchestrator.py analysis.json --pr 123
@@ -25,7 +27,7 @@ from typing import Dict, Any, Tuple
 
 
 class ExecutionOrchestrator:
-    """Manages execution order: JIRA → DB → JSON → HTML"""
+    """Manages execution order: JIRA → DB → CLI → JSON → HTML"""
 
     def __init__(self, analysis_data: Dict[str, Any], pr_number: int = None, verbose: bool = True):
         self.analysis_data = analysis_data
@@ -37,6 +39,7 @@ class ExecutionOrchestrator:
         self.phases = {
             'jira': {'success': False, 'message': '', 'critical': True},
             'database': {'success': False, 'message': '', 'critical': True},
+            'cli': {'success': False, 'message': '', 'critical': False},
             'json': {'success': False, 'message': '', 'critical': False},
             'html': {'success': False, 'message': '', 'critical': False},
         }
@@ -351,13 +354,71 @@ class ExecutionOrchestrator:
             return False
 
     # ============================================================================
-    # PHASE 3: JSON SAVE (SECONDARY - Can fail without blocking)
+    # PHASE 3: CLI GENERATE (SECONDARY - Can fail without blocking)
     # ============================================================================
 
-    def phase_3_save_json(self) -> bool:
-        """PHASE 3: Save JSON (SECONDARY - Can fail without blocking)"""
+    def phase_3_generate_cli(self) -> bool:
+        """PHASE 3: Generate CLI output (SECONDARY - Can fail without blocking)"""
         try:
-            self.log("\n[PHASE 3/4] SAVING JSON (SECONDARY)...", "INFO")
+            self.log("\n[PHASE 3/5] GENERATING CLI OUTPUT (SECONDARY)...", "INFO")
+
+            cli_formatter = Path(".windsurf/workflows/templates/cli_formatter.py")
+            if not cli_formatter.exists():
+                msg = "cli_formatter.py not found"
+                self.log(f"⚠️  {msg}", "WARNING")
+                self.phases['cli']['message'] = msg
+                return False
+
+            # Create temp JSON for CLI formatter
+            temp_json = self.output_dir / f".temp-pr-{self.pr_number}-cli.json"
+            with open(temp_json, 'w', encoding='utf-8') as f:
+                json.dump(self.analysis_data, f, indent=2, default=str)
+
+            result = subprocess.run(
+                [sys.executable, str(cli_formatter), str(temp_json)],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            try:
+                temp_json.unlink()
+            except:
+                pass
+
+            if result.returncode == 0:
+                cli_file = self.output_dir / f"pr-{self.pr_number}-cli-output.txt"
+                if cli_file.exists():
+                    size = cli_file.stat().st_size
+                    msg = f"CLI output generated: {cli_file} ({size} bytes)"
+                    self.log(f"✅ {msg}", "SUCCESS")
+                    self.phases['cli']['success'] = True
+                    self.phases['cli']['message'] = msg
+                    return True
+                else:
+                    # CLI formatter may output to stdout
+                    msg = "CLI output generated"
+                    self.log(f"✅ {msg}", "SUCCESS")
+                    self.phases['cli']['success'] = True
+                    self.phases['cli']['message'] = msg
+                    return True
+            else:
+                raise Exception(result.stderr or "CLI generation failed")
+
+        except Exception as e:
+            msg = f"CLI generation failed: {e}"
+            self.log(f"⚠️  {msg}", "WARNING")
+            self.phases['cli']['message'] = msg
+            return False
+
+    # ============================================================================
+    # PHASE 4: JSON SAVE (SECONDARY - Can fail without blocking)
+    # ============================================================================
+
+    def phase_4_save_json(self) -> bool:
+        """PHASE 4: Save JSON (SECONDARY - Can fail without blocking)"""
+        try:
+            self.log("\n[PHASE 4/5] SAVING JSON (SECONDARY)...", "INFO")
 
             json_file = self.output_dir / f"pr-{self.pr_number}-data.json"
             json_str = json.dumps(self.analysis_data, indent=2, ensure_ascii=False, default=str)
@@ -380,13 +441,13 @@ class ExecutionOrchestrator:
             return False
 
     # ============================================================================
-    # PHASE 4: HTML GENERATE (OPTIONAL - Can fail without blocking)
+    # PHASE 5: HTML GENERATE (OPTIONAL - Can fail without blocking)
     # ============================================================================
 
-    def phase_4_generate_html(self) -> bool:
-        """PHASE 4: Generate HTML (OPTIONAL - Can fail without blocking)"""
+    def phase_5_generate_html(self) -> bool:
+        """PHASE 5: Generate HTML (OPTIONAL - Can fail without blocking)"""
         try:
-            self.log("\n[PHASE 4/4] GENERATING HTML (OPTIONAL)...", "INFO")
+            self.log("\n[PHASE 5/5] GENERATING HTML (OPTIONAL)...", "INFO")
 
             gen = Path(".windsurf/workflows/templates/generate-html.py")
             if not gen.exists():
@@ -437,25 +498,28 @@ class ExecutionOrchestrator:
         self.log("EXECUTION ORCHESTRATOR - CORRECT ORDER", "INFO")
         self.log("=" * 80, "INFO")
 
-        # PHASE 1: JIRA (CRITICAL)
+        # PHASE 1: JIRA (CRITICAL) - Post to external system first
         jira_ok = self.phase_1_update_jira()
 
-        # PHASE 2: Database (CRITICAL)
+        # PHASE 2: Database (CRITICAL) - Save to database second
         db_ok = self.phase_2_update_database()
 
-        # PHASE 3: JSON (SECONDARY - can fail)
-        json_ok = self.phase_3_save_json()
+        # PHASE 3: CLI (SECONDARY) - Generate CLI output third
+        cli_ok = self.phase_3_generate_cli()
 
-        # PHASE 4: HTML (OPTIONAL - can fail)
-        html_ok = self.phase_4_generate_html()
+        # PHASE 4: JSON (SECONDARY - can fail)
+        json_ok = self.phase_4_save_json()
+
+        # PHASE 5: HTML (OPTIONAL - can fail)
+        html_ok = self.phase_5_generate_html()
 
         # Print summary
-        self._print_summary(jira_ok, db_ok, json_ok, html_ok)
+        self._print_summary(jira_ok, db_ok, cli_ok, json_ok, html_ok)
 
         # Return success if critical phases succeeded
         return jira_ok and db_ok
 
-    def _print_summary(self, jira_ok: bool, db_ok: bool, json_ok: bool, html_ok: bool):
+    def _print_summary(self, jira_ok: bool, db_ok: bool, cli_ok: bool, json_ok: bool, html_ok: bool):
         """Print execution summary"""
         self.log("\n" + "=" * 80, "INFO")
         self.log("EXECUTION SUMMARY", "INFO")
@@ -468,8 +532,12 @@ class ExecutionOrchestrator:
         self.log(f"  {'✅' if db_ok else '❌'} Database Update: {self.phases['database']['message']}")
 
         # Secondary phases
-        self.log("\nSECONDARY PHASES:", "INFO")
+        self.log("\nSECONDARY PHASES (Text Formats):", "INFO")
+        self.log(f"  {'✅' if cli_ok else '⚠️'} CLI Generate: {self.phases['cli']['message']}")
         self.log(f"  {'✅' if json_ok else '⚠️'} JSON Save: {self.phases['json']['message']}")
+
+        # Optional phases
+        self.log("\nOPTIONAL PHASES (Visual):", "INFO")
         self.log(f"  {'✅' if html_ok else '⚠️'} HTML Generate: {self.phases['html']['message']}")
 
         self.log("\n" + "-" * 80, "INFO")

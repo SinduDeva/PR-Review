@@ -4,6 +4,8 @@
 
 The JIRA comment now contains the **ENTIRE analysis** in plain text format (no unicode, no markdown). All data from the JSON structure is included.
 
+**IMPORTANT:** JIRA comment is generated and posted **BEFORE** CLI and HTML outputs, ensuring external systems are notified first.
+
 ## Structure
 
 ### ✅ INCLUDED SECTIONS
@@ -457,23 +459,49 @@ ACTION REQUIRED: Review required (critical issues found)
 
 ## Workflow Integration
 
-### JSON → JIRA Comment
+### Execution Order: JIRA → DB → CLI → JSON → HTML
 
 ```
 Analysis Data (in-memory)
     ↓
-execution_orchestrator.py
+execution_orchestrator.py::execute()
     ↓
-_format_jira_plain_text()
+PHASE 1: JIRA (CRITICAL)
+    ├─ _format_jira_plain_text()
+    ├─ Saved to: .ai-review/pr-{pr}-jira-comment.txt
+    ├─ Posted to JIRA (via jira_uploader.py)
+    └─ ✅ Complete report in JIRA
     ↓
-ENTIRE analysis formatted as plain text
+PHASE 2: Database (CRITICAL)
+    ├─ database_uploader.py
+    └─ ✅ Data saved to database
     ↓
-Saved to: .ai-review/pr-{pr}-jira-comment.txt
+PHASE 3: CLI (SECONDARY)
+    ├─ cli_formatter.py
+    ├─ Generated: .ai-review/pr-{pr}-cli-output.txt
+    └─ ⚠️ Can fail without blocking
     ↓
-Posted to JIRA (via jira_uploader.py)
+PHASE 4: JSON (SECONDARY)
+    ├─ Saved to: .ai-review/pr-{pr}-data.json
+    └─ ⚠️ Can fail without blocking
     ↓
-✅ Complete report in JIRA
+PHASE 5: HTML (OPTIONAL)
+    ├─ generate-html.py
+    ├─ Generated: .ai-review/pr-{pr}-data.html
+    └─ ⚠️ Can fail without blocking
+    ↓
+✅ Workflow Complete
 ```
+
+### Why This Order?
+
+| Phase | Type | Reason |
+|-------|------|--------|
+| JIRA | CRITICAL | Must notify external system first |
+| Database | CRITICAL | Must persist data early |
+| CLI | SECONDARY | Text output for console users |
+| JSON | SECONDARY | Raw data for processing |
+| HTML | OPTIONAL | Visual report (heavy, can fail) |
 
 ### No Data Loss
 
@@ -482,6 +510,7 @@ Posted to JIRA (via jira_uploader.py)
 - ✅ All metrics (summary and detailed)
 - ✅ All analysis (impact, API, Spring Boot)
 - ✅ All recommendations (overall + final)
+- ✅ JIRA updated even if JSON/HTML fails
 
 ---
 
@@ -513,6 +542,104 @@ python .windsurf/workflows/templates/jira_uploader.py \
 
 ---
 
+## Execution Order Details
+
+### PHASE 1: JIRA (CRITICAL)
+```
+Why First?
+- External systems must be notified immediately
+- In-memory data is available
+- Doesn't depend on file I/O
+- Can't fail silently
+
+Generated Files:
+- .ai-review/pr-{pr}-jira-comment.txt (text)
+
+Failure Handling:
+- ❌ FAILS: Entire workflow stops
+- Returns False immediately
+```
+
+### PHASE 2: Database (CRITICAL)
+```
+Why Second?
+- Must persist data to database
+- Also from in-memory data
+- Independent of JIRA status
+
+Generated Files:
+- (Internal database)
+
+Failure Handling:
+- ❌ FAILS: Entire workflow stops
+- Returns False immediately
+```
+
+### PHASE 3: CLI (SECONDARY)
+```
+Why Third?
+- Text output for console display
+- Useful for terminal users
+- Can fail without stopping workflow
+
+Generated Files:
+- .ai-review/pr-{pr}-cli-output.txt (optional)
+
+Failure Handling:
+- ⚠️ FAILS: Logs warning, continues
+- Workflow doesn't stop
+```
+
+### PHASE 4: JSON (SECONDARY)
+```
+Why Fourth?
+- Raw data for downstream processing
+- Can be regenerated if needed
+- Can fail without stopping workflow
+
+Generated Files:
+- .ai-review/pr-{pr}-data.json
+
+Failure Handling:
+- ⚠️ FAILS: Logs warning, continues
+- Workflow doesn't stop
+```
+
+### PHASE 5: HTML (OPTIONAL)
+```
+Why Fifth/Last?
+- Visual report (heavy processing)
+- Depends on JSON file
+- Can fail without stopping workflow
+
+Generated Files:
+- .ai-review/pr-{pr}-data.html
+
+Failure Handling:
+- ⚠️ FAILS: Logs warning, continues
+- Workflow doesn't stop
+```
+
+### Success Criteria
+
+```
+Workflow Succeeds If:
+✅ PHASE 1 (JIRA) succeeds AND
+✅ PHASE 2 (Database) succeeds
+(Phases 3-5 optional)
+
+Workflow Fails If:
+❌ PHASE 1 (JIRA) fails OR
+❌ PHASE 2 (Database) fails
+
+Example Results:
+✅ JIRA + DB + CLI + JSON + HTML = SUCCESS
+✅ JIRA + DB (only) = SUCCESS
+✅ JIRA + DB + CLI (JSON/HTML failed) = SUCCESS
+❌ JIRA (DB failed) = FAILURE
+❌ (Both failed) = FAILURE
+```
+
 ## Summary
 
 **The JIRA comment now contains:**
@@ -527,4 +654,11 @@ python .windsurf/workflows/templates/jira_uploader.py \
 - ✅ AI summary and recommendations
 - ✅ Plain text format (universal compatibility)
 
+**Generated FIRST (before CLI/HTML):**
+- ✅ Ensures external systems notified immediately
+- ✅ Doesn't depend on other phases
+- ✅ JIRA is most critical output
+
 **Users can see the complete analysis directly in JIRA without accessing separate JSON/HTML files!**
+
+**JIRA is prioritized and generated BEFORE CLI and HTML outputs!**

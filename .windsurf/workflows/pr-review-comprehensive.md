@@ -2162,9 +2162,23 @@ Else if metadata.jira_tickets is NOT EMPTY:
 
 For each ticket_id in ticket_list:
 
-1. Get the Atlassian Cloud ID:
+1. Get the Atlassian Cloud ID (IMPORTANT - extract from response):
    Call: mcp0_getAccessibleAtlassianResources()
-   Extract cloudId from the response.
+
+   Expected Response Format:
+   {
+     "resources": [
+       {
+         "cloudId": "a9153d1c-fa85-4747-8060-2bd3731a74a6",  # UUID format (REQUIRED)
+         "name": "Applied Data Finance",
+         "url": "https://applieddatafinance.atlassian.net"
+       }
+     ]
+   }
+
+   EXTRACT: cloud_id = response.resources[0].cloudId  # Get UUID, not slug
+
+   ⚠️ CRITICAL: Use the UUID format, NOT the domain slug "applieddatafinance"
 
 2. Read the JIRA comment file generated in Step 6c:
    File: .ai-review/pr-{pr_number}-jira-comment.txt
@@ -2172,19 +2186,89 @@ For each ticket_id in ticket_list:
 
 3. Post comment to JIRA:
    Call: mcp0_addCommentToJiraIssue(
-     cloudId="{cloud_id}",
-     issueIdOrKey="{ticket_id}",  # Will be jira_ticket_id from branch
+     cloudId="{cloud_id}",        # Use UUID: a9153d1c-fa85-4747-8060-2bd3731a74a6
+     issueIdOrKey="{ticket_id}",  # Example: CPI-8408
      commentBody=<contents of jira-comment.txt>
    )
 
-4. Handle results:
+4. Handle Cloud ID Retrieval Failure:
+   - If mcp0_getAccessibleAtlassianResources() returns no resources:
+     Output: "⚠️ JIRA Integration Failed: No Atlassian resources found"
+     Possible causes:
+       - Atlassian MCP server not configured
+       - Missing ATLASSIAN_CLOUD_ID environment variable
+       - OAuth token expired or invalid
+     Action: Save comment file for manual posting, continue workflow
+
+5. Handle Comment Posting Results:
    - Success: Output "✅ Comment posted to {ticket_id}"
    - Failure: Log error, output "⚠️ Failed to post to JIRA: {error}"
-     Save comment file for manual posting.
-     Do NOT fail the workflow.
+     - If error is "invalid cloudId": Cloud ID extraction failed (see step 4)
+     - If error is "issue not found": Verify ticket ID exists (e.g., CPI-8408)
+     - If error is "permission denied": Check JIRA API token permissions
+     - Save comment file for manual posting
+     - Do NOT fail the workflow
+
+**CLOUD ID FORMAT REFERENCE**:
+✅ CORRECT formats:
+  - UUID: "a9153d1c-fa85-4747-8060-2bd3731a74a6"
+  - Full URL: "https://applieddatafinance.atlassian.net"
+
+❌ WRONG formats:
+  - Domain slug: "applieddatafinance"
+  - Workspace slug: "applieddatafinance" (from Bitbucket)
 ```
 
 **IMPORTANT**: Do NOT hardcode any JIRA ticket IDs, PR numbers, or branch names in the comment body. The `jira_formatter.py` script generates the comment dynamically from the JSON data.
+
+---
+
+**🔧 CONFIGURATION: How to Fix "Invalid Cloud ID" Errors**
+
+If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
+
+1. **Environment Variables** (must be set):
+   ```bash
+   ATLASSIAN_CLOUD_ID=a9153d1c-fa85-4747-8060-2bd3731a74a6  # UUID format
+   ATLASSIAN_DOMAIN=applieddatafinance.atlassian.net
+   ATLASSIAN_TOKEN=your_api_token                          # OAuth/API token
+   ```
+
+2. **MCP Server Configuration** (claude_desktop_config.json):
+   ```json
+   {
+     "mcpServers": {
+       "atlassian": {
+         "command": "python3",
+         "args": ["-m", "mcp_server_atlassian"],
+         "env": {
+           "ATLASSIAN_CLOUD_ID": "a9153d1c-fa85-4747-8060-2bd3731a74a6",
+           "ATLASSIAN_TOKEN": "${ATLASSIAN_TOKEN}"
+         }
+       }
+     }
+   }
+   ```
+
+3. **Bitbucket to JIRA Mapping** (Get Cloud ID from Bitbucket):
+   ```
+   When you call mcp1_getPullRequests(), response contains:
+
+   "workspace": {
+     "uuid": "{a9153d1c-fa85-4747-8060-2bd3731a74a6}",  # Extract this
+     "slug": "applieddatafinance"                         # Don't use this
+   }
+
+   Use UUID format (without braces): a9153d1c-fa85-4747-8060-2bd3731a74a6
+   ```
+
+4. **Test MCP Connection** (verify Atlassian tool works):
+   ```bash
+   # In Cascade/Claude Code:
+   mcp0_getAccessibleAtlassianResources()
+
+   # Should return valid cloudId in response
+   ```
 
 ---
 

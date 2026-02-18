@@ -314,42 +314,44 @@ class WorkflowOrchestrator:
 
         issues = []
 
-        # Check impact_analysis
-        if "impact_analysis" not in self.analysis_data:
-            issues.append("❌ Missing 'impact_analysis' section")
-        else:
+        # Check impact_analysis (OPTIONAL - OK if missing or empty)
+        if "impact_analysis" in self.analysis_data:
             impact = self.analysis_data["impact_analysis"]
-            if "summary" not in impact:
-                issues.append("❌ Missing 'impact_analysis.summary'")
-            if "affected_apis" not in impact:
-                issues.append("❌ Missing 'impact_analysis.affected_apis'")
+            affected_apis = impact.get("affected_apis", [])
+            if affected_apis:
+                self.log(f"Found {len(affected_apis)} affected APIs", "SUCCESS")
             else:
-                self.log(f"Found {len(impact['affected_apis'])} affected APIs", "SUCCESS")
-
-        # Check api_changes
-        if "api_changes" not in self.analysis_data:
-            issues.append("⚠️  Missing 'api_changes' section (optional)")
+                self.log("No affected APIs detected (expected for non-API PRs)", "INFO")
         else:
-            self.log(f"Found {len(self.analysis_data['api_changes'])} API changes", "SUCCESS")
+            self.log("No impact_analysis section (expected for non-API PRs)", "INFO")
 
-        # Check findings
+        # Check api_changes (OPTIONAL)
+        if "api_changes" in self.analysis_data:
+            api_changes = self.analysis_data["api_changes"]
+            if api_changes:
+                self.log(f"Found {len(api_changes)} API changes", "SUCCESS")
+
+        # Check findings (OPTIONAL but valuable)
         if "findings" in self.analysis_data:
             findings = self.analysis_data["findings"]
-            self.log(f"Found {len(findings)} code findings", "SUCCESS")
+            if findings:
+                self.log(f"Found {len(findings)} code findings", "SUCCESS")
 
-        # Check overall recommendation
-        if "overall_recommendation" not in self.analysis_data:
-            issues.append("❌ Missing 'overall_recommendation'")
-        else:
+        # Check overall recommendation (OPTIONAL - provide fallback)
+        if "overall_recommendation" in self.analysis_data:
             rec = self.analysis_data["overall_recommendation"]
-            self.log(f"Recommendation: {rec.get('decision')}", "SUCCESS")
+            recommendation = rec.get('decision', 'REVIEW_REQUIRED')
+            self.log(f"Recommendation: {recommendation}", "SUCCESS")
+        else:
+            self.log("No explicit recommendation (will default to REVIEW_REQUIRED)", "INFO")
 
+        # No blocking issues - API impact validation is non-blocking
+        # This allows workflows to continue even if API analysis is empty
         if issues:
             for issue in issues:
-                self.log(issue, "WARNING")
-            return False
+                self.log(issue, "INFO")
 
-        self.log("API impact analysis validated ✓", "SUCCESS")
+        self.log("API impact analysis checked ✓", "SUCCESS")
         return True
 
     def generate_html_report(self) -> bool:
@@ -458,15 +460,17 @@ class WorkflowOrchestrator:
             return True  # Non-critical
 
     def verify_reports(self) -> bool:
-        """Verify all reports were generated (Step 6f)"""
+        """Verify essential reports were generated (Step 6f)"""
         self.print_section("STEP 6f: Verify Reports Generated")
 
+        # Only JSON is required (critical output)
         required_files = [
             ("JSON Data", f"pr-{self.pr_number}-data.json"),
-            ("HTML Report", f"pr-{self.pr_number}-data.html"),
         ]
 
+        # HTML, JIRA comment, CLI are optional (graceful degradation)
         optional_files = [
+            ("HTML Report", f"pr-{self.pr_number}-data.html"),
             ("JIRA Comment", f"pr-{self.pr_number}-jira-comment.txt"),
         ]
 
@@ -486,7 +490,7 @@ class WorkflowOrchestrator:
                 size = file_path.stat().st_size
                 self.log(f"{name}: {filename} ({size} bytes)", "SUCCESS")
             else:
-                self.log(f"{name}: Not generated (optional)", "WARNING")
+                self.log(f"{name}: Not generated (optional - graceful degradation)", "INFO")
 
         return all_good
 
@@ -549,15 +553,14 @@ class WorkflowOrchestrator:
         if not self.save_analysis_json():
             return False
 
-        # Step 6b: Validate API Impact
-        if not self.validate_api_impact():
-            self.log("API impact analysis validation failed", "ERROR")
-            return False
+        # Step 6b: Validate API Impact (NON-BLOCKING - allows empty API analysis)
+        self.validate_api_impact()  # Logs info but doesn't block
+        self.log("API impact validation complete (non-blocking)", "INFO")
 
         # Step 6c: Generate HTML
         if not self.generate_html_report():
-            self.log("HTML report generation failed", "ERROR")
-            return False
+            self.log("HTML report generation failed (non-critical)", "WARNING")
+            # Don't return False - continue with fallback options
 
         # Step 6d: Generate JIRA
         if not self.generate_jira_comment():

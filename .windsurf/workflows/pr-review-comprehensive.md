@@ -1959,29 +1959,35 @@ Deduplicate and prioritize by:
 3. Save the JSON from Step 6b to file:
    Write the complete JSON object to: .ai-review/pr-{pr_number}-data.json
 
-   **IMPLEMENTATION** (use Python script to save JSON):
-   ```bash
-   # Save JSON data to file using dedicated script
-   python .windsurf/workflows/templates/json_saver.py \
-     --pr {pr_number} \
-     --output .ai-review/pr-{pr_number}-data.json \
-     --data '{json_data_string}'
+   **IMPLEMENTATION** (use PowerShell to serialize and write JSON):
+   ```powershell
+   # Create .ai-review directory if needed
+   New-Item -ItemType Directory -Force -Path ".ai-review" | Out-Null
+
+   # Convert findings array and other data to JSON
+   # Note: This JSON is pre-formatted by LLM analysis steps (4a-4g)
+   $jsonObject = @{
+       pr_number = {pr_number}
+       pr_title = "{pr_title}"
+       pr_description = "{pr_description}"
+       findings = {findings_array}
+       files_reviewed = {files_reviewed_array}
+       impact_analysis = {impact_analysis_dict}
+       execution_status = {execution_status_dict}
+   }
+
+   # Convert to JSON string and write to file with UTF-8 encoding (no BOM)
+   $jsonString = $jsonObject | ConvertTo-Json -Depth 10
+   $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+   [System.IO.File]::WriteAllText(".ai-review/pr-{pr_number}-data.json", $jsonString, $Utf8NoBom)
    ```
 
-   **How json_saver.py works:**
-   - Accepts JSON data via `--data` parameter or stdin
-   - Serializes Python dict to JSON string via `json.dumps()`
-   - Writes to file with UTF-8 encoding (no BOM)
-   - Creates `.ai-review/` directory if needed
-   - Returns success/failure status
-   - Handles all encoding/serialization automatically
-
-   **Why use subprocess instead of Write tool?**
-   - Write tool is not available in Cascade/SWE 1.5 context
-   - Python subprocess execution is reliable and cross-platform
-   - json_saver.py handles all serialization/encoding
-   - Follows pattern used by generate-html.py, jira_formatter.py, etc.
-   - Ensures consistent file handling across all tools
+   **Why PowerShell instead of Python subprocess?**
+   - No need to create python files (json_saver.py doesn't exist)
+   - PowerShell ConvertTo-Json is built-in, reliable, cross-platform
+   - Avoids PowerShell `python -c` syntax errors
+   - Cascade can execute PowerShell commands natively
+   - UTF-8 encoding handled correctly (no BOM issues)
 
    ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
 
@@ -2050,51 +2056,37 @@ Deduplicate and prioritize by:
 
 6. Open HTML report in browser automatically:
 
-   # Cross-platform browser opening with Python (Safe - no shell=True)
-   python -c "
-import platform
-import subprocess
-import sys
-import os
+   **PowerShell command** (native, no Python subprocess needed):
+   ```powershell
+   $htmlFile = ".ai-review/pr-{pr_number}-data.html"
 
-html_file = '.ai-review/pr-{pr_number}-data.html'
+   # Check if file exists
+   if (Test-Path $htmlFile) {
+       # Get absolute path for safety
+       $absPath = Resolve-Path $htmlFile
 
-try:
-    # Ensure file exists
-    if not os.path.exists(html_file):
-        raise FileNotFoundError(f'HTML file not found: {html_file}')
+       # Cross-platform browser opening
+       if ($PSVersionTable.Platform -eq "Win32NT" -or $PSVersionTable.OS -like "*Windows*") {
+           # Windows: use Start-Process
+           Start-Process $absPath -ErrorAction SilentlyContinue
+           Write-Output "✅ HTML report opened in browser: $htmlFile"
+           Write-Output "   Location: $absPath"
+       } else {
+           # macOS/Linux: use open/xdg-open
+           if ($PSVersionTable.OS -like "*Darwin*") {
+               open $absPath
+           } else {
+               xdg-open $absPath
+           }
+           Write-Output "✅ HTML report opened in browser: $htmlFile"
+       }
+   } else {
+       Write-Output "❌ HTML file not found: $htmlFile"
+       Write-Output "   Please open manually in your browser"
+   }
+   ```
 
-    # Get absolute path for safety
-    abs_path = os.path.abspath(html_file)
-
-    # Cross-platform browser opening (NO shell=True - safe from injection)
-    if platform.system() == 'Windows':
-        # Safe on Windows - uses native file association
-        os.startfile(abs_path)
-    elif platform.system() == 'Darwin':  # macOS
-        # Safe - no shell=True, direct command
-        subprocess.run(['open', abs_path], check=False)
-    else:  # Linux and other Unix-like systems
-        # Safe - no shell=True, direct command
-        subprocess.run(['xdg-open', abs_path], check=False)
-
-    print(f'✅ HTML report opened in browser: {html_file}')
-    print(f'   Location: {abs_path}')
-
-except FileNotFoundError as e:
-    print(f'❌ Error: {e}')
-    print(f'   HTML file generation may have failed')
-    sys.exit(0)  # Don't fail workflow
-except Exception as e:
-    print(f'⚠️ Could not auto-open browser: {e}')
-    print(f'   Please open manually: {abs_path if \"abs_path\" in locals() else html_file}')
-    sys.exit(0)  # Don't fail workflow if browser open fails
-"
-
-   # Manual commands (if Python approach fails):
-   # Windows: start .ai-review/pr-{pr_number}-data.html
-   # macOS:   open .ai-review/pr-{pr_number}-data.html
-   # Linux:   xdg-open .ai-review/pr-{pr_number}-data.html
+   **If PowerShell command fails**, fallback to CLI summary output - the HTML report will still exist at `.ai-review/pr-{pr_number}-data.html` for manual opening.
 ```
 
 **If Python scripts fail**: Fall back to displaying the CLI summary inline from the JSON data. The HTML report is the primary deliverable.

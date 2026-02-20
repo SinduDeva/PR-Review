@@ -1647,10 +1647,11 @@ If jira_tickets contains values:
 Failure: No ticket found:
 
 If BOTH jira_ticket_id AND jira_tickets are EMPTY or NULL:
-  - Skip JIRA posting entirely
-  - Output: "⚠️ JIRA Integration Skipped — no tickets found in branch name or PR"
-  - Continue to workflow completion
+  - Log warning: "⚠️ JIRA Integration: No tickets found in branch name or PR"
   - Set jira_posted = false
+  - Output: "⚠️ JIRA comment not posted (no tickets found - non-blocking)"
+  - Continue to Step 7 (database upload)
+  - Note: Step 6 still executes, only the posting component is skipped
 ```
 
 ---
@@ -1797,7 +1798,8 @@ If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
 1. Check database availability:
    - Verify MySQL server running on localhost
    - Verify pr_review_audit database exists
-   - If not available: Log warning and skip to Step 9
+   - If not available: Log warning and set database_uploaded=false
+   - Continue to Step 8 (reports) - do NOT skip Step 7
 
 2. Upload complete results to database:
    python .windsurf/workflows/templates/database_uploader.py \
@@ -1820,8 +1822,10 @@ If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
 
 4. If database not available:
    ⚠️ Database connection failed: [error]
-   ⚠️ Skipping database upload - workflow continues
-   → User can manually upload later if desired
+   ⚠️ Database upload not completed - workflow continues to Step 8
+   → Reports will still be generated (JSON, HTML, CLI)
+   → User can manually upload database later if desired
+   → Step 7 completes with database_uploaded=false status
 
 5. Log in execution_status:
    database_uploaded: true|false
@@ -2350,11 +2354,25 @@ Deduplicate and prioritize by:
 
 **Goal**: Release read-only lock on workflow file after execution completes (success or failure)
 
+**⚠️ CRITICAL - MANDATORY CLEANUP STEP**: This step must execute in ALL cases:
+- ✅ If Steps 6 (JIRA) fails → Step 9 still runs
+- ✅ If Steps 7 (Database) fails → Step 9 still runs
+- ✅ If Steps 8 (Reports) fails → Step 9 still runs
+- ✅ If ANY error occurs → Step 9 still runs
+
+**Implementation**: Use try-finally logic to ensure Step 9 always executes, preventing permanent lock.
+
 **UNLOCK WORKFLOW FILE - EXECUTION FINISHED**:
 ```bash
-python .windsurf/workflows/templates/workflow_lock.py \
-  .windsurf/workflows/pr-review-comprehensive.md \
-  unlockfile
+# Use try-finally pattern to guarantee execution
+try:
+  # Steps 0-8 execute here (analysis, JIRA, database, reports)
+  # May succeed, partially succeed, or fail
+finally:
+  # Step 9 ALWAYS executes, regardless of above results
+  python .windsurf/workflows/templates/workflow_lock.py \
+    .windsurf/workflows/pr-review-comprehensive.md \
+    unlockfile
 
 Expected output:
   ✅ Workflow file unlocked (writable)
@@ -2363,8 +2381,8 @@ Result: Workflow file is restored to WRITABLE state.
         Cascade IDE and users can edit it again.
         Lock is automatically released after completion.
 
-Note: This step ALWAYS executes, even if earlier steps failed.
-      Ensures workflow is never permanently locked.
+GUARANTEE: This step ALWAYS executes, even if earlier steps failed or were partially skipped.
+           Ensures workflow is NEVER permanently locked and cleanup always happens.
 ```
 
 ---

@@ -366,9 +366,100 @@ def generate_html_report(data):
         return generate_fallback_html(context)
 
 def generate_fallback_html(context):
-    """Generate minimal fallback HTML when template rendering fails"""
+    """Generate comprehensive fallback HTML when template rendering fails
+
+    Ensures all required report sections are included even in fallback:
+    - Code analysis with findings
+    - Impact analysis summary
+    - API impact report
+    - Files context
+    - Overall recommendation
+    """
     metadata = context.get('metadata', {})
     summary = context.get('summary', {})
+    files_reviewed = context.get('files_reviewed', [])
+    files_excluded = context.get('files_excluded', [])
+    impact_analysis = context.get('impact_analysis', {})
+    overall_rec = context.get('overall_recommendation', {})
+    test_coverage = context.get('test_coverage', {})
+    api_impact_html = context.get('api_impact_html', '')
+
+    # Helper function to build findings section
+    findings_html = ""
+    findings = context.get('metadata', {}).get('findings', [])  # Will be empty in fallback
+    if not findings:
+        # Try to extract from files context
+        all_findings = []
+        for file_ctx in files_reviewed:
+            if file_ctx.get('issues'):
+                all_findings.extend(file_ctx['issues'])
+
+        if all_findings:
+            critical = [f for f in all_findings if f.get('severity') == 'CRITICAL']
+            high = [f for f in all_findings if f.get('severity') == 'HIGH']
+            medium = [f for f in all_findings if f.get('severity') in {'MEDIUM', 'LOW'}]
+
+            findings_html = '<section class="code-analysis"><div class="section">'
+            findings_html += '<h2>🔍 Code Analysis</h2>'
+            findings_html += f'<p class="severity-breakdown">Critical: <span class="badge critical">{len(critical)}</span>, High: <span class="badge high">{len(high)}</span>, Medium/Low: <span class="badge medium">{len(medium)}</span></p>'
+
+            if all_findings:
+                findings_html += '<div class="findings-table"><table><thead><tr><th>File</th><th>Severity</th><th>Type</th><th>Issue</th></tr></thead><tbody>'
+                for finding in all_findings[:50]:  # Show first 50
+                    severity = finding.get('severity', 'UNKNOWN')
+                    severity_color = 'critical' if severity == 'CRITICAL' else 'high' if severity == 'HIGH' else 'medium'
+                    findings_html += f'''<tr class="severity-{severity_color.lower()}">
+                        <td><code>{escape_html(finding.get('file', 'unknown'))}</code></td>
+                        <td><span class="badge {severity_color}">{severity}</span></td>
+                        <td>{escape_html(finding.get('type', 'Bug'))}</td>
+                        <td>{escape_html(finding.get('description', 'No description'))}</td>
+                    </tr>'''
+                findings_html += '</tbody></table></div>'
+            findings_html += '</div></section>'
+        else:
+            findings_html = '<div class="section"><p class="success">✅ No code analysis issues detected</p></div>'
+
+    # Build impact analysis section
+    impact_html = '<section class="impact-analysis"><div class="section"><h2>📊 Impact Analysis</h2>'
+    impact_summary = impact_analysis.get('summary', {})
+    impact_html += f'''<table>
+        <tr><td>Files Changed</td><td>{impact_summary.get('files_changed', len(files_reviewed))}</td></tr>
+        <tr><td>Risk Level</td><td><span class="badge">{impact_summary.get('risk_level', 'UNKNOWN')}</span></td></tr>
+        <tr><td>Direct Impact</td><td>{impact_summary.get('direct_impact', 'UNKNOWN')}</td></tr>
+        <tr><td>Test Coverage</td><td>{test_coverage.get('overall', 'N/A')}</td></tr>
+    </table>'''
+    impact_html += '</div></section>'
+
+    # Build files section if available
+    files_html = ""
+    if files_reviewed:
+        files_html = '<section class="files-context"><div class="section"><h2>📁 Files Reviewed</h2>'
+        files_html += '<div class="files-list"><table><thead><tr><th>File</th><th>Type</th><th>Status</th><th>Lines ±</th><th>Issues</th></tr></thead><tbody>'
+        for f in files_reviewed[:50]:
+            issues_count = len(f.get('issues', []))
+            file_type = f.get('type', 'code')
+            additions = f.get('additions', 0)
+            deletions = f.get('deletions', 0)
+            files_html += f'''<tr>
+                <td><code>{escape_html(f.get('path', 'unknown'))}</code></td>
+                <td><span class="badge">{file_type}</span></td>
+                <td>{f.get('status', 'UPDATED')}</td>
+                <td>+{additions}/-{deletions}</td>
+                <td><span class="badge issue-count">{issues_count}</span></td>
+            </tr>'''
+        files_html += '</tbody></table></div>'
+        if len(files_reviewed) > 50:
+            files_html += f'<p class="text-muted">... and {len(files_reviewed) - 50} more files</p>'
+        files_html += '</div></section>'
+
+    # Build recommendation section
+    rec_html = '<section class="recommendation"><div class="section"><h2>✅ Review Recommendation</h2>'
+    decision = overall_rec.get('decision', 'UNABLE_TO_REVIEW')
+    reason = overall_rec.get('reason', 'No recommendation available')
+    decision_color = 'danger' if decision == 'BLOCK' else 'warning' if decision == 'REQUEST_CHANGES' else 'success'
+    rec_html += f'<p><strong>Decision:</strong> <span class="badge {decision_color}">{decision}</span></p>'
+    rec_html += f'<p><strong>Reason:</strong> {escape_html(reason)}</p>'
+    rec_html += '</div></section>'
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -376,61 +467,92 @@ def generate_fallback_html(context):
     <meta charset="UTF-8">
     <title>PR #{metadata.get('pr_number', 'unknown')} - Code Review (Fallback Report)</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
-        .header {{ background: #d32f2f; color: white; padding: 20px; border-radius: 5px; }}
-        .section {{ background: white; margin: 20px 0; padding: 20px; border-radius: 5px; }}
-        .warning {{ background: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 10px 0; }}
-        table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
-        th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
-        th {{ background: #f0f0f0; }}
-        code {{ background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }}
+        body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #333; }}
+        .header {{ background: linear-gradient(135deg, #d32f2f 0%, #ff6f00 100%); color: white; padding: 30px; border-radius: 8px; margin-bottom: 20px; }}
+        .header h1 {{ margin: 0 0 10px 0; font-size: 28px; }}
+        .section {{ background: white; margin: 20px 0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        .warning {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+        th {{ background: #f0f0f0; font-weight: bold; }}
+        tr:nth-child(even) {{ background: #fafafa; }}
+        code {{ background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }}
+        .badge {{ display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }}
+        .badge.critical {{ background: #d32f2f; color: white; }}
+        .badge.high {{ background: #ff6f00; color: white; }}
+        .badge.medium {{ background: #fbc02d; color: #333; }}
+        .badge.success {{ background: #388e3c; color: white; }}
+        .badge.info {{ background: #1976d2; color: white; }}
+        .badge.issue-count {{ background: #666; color: white; }}
+        .severity-breakdown {{ font-size: 14px; margin: 10px 0; }}
+        .findings-table, .files-list {{ overflow-x: auto; }}
+        .success {{ color: #388e3c; font-weight: bold; font-size: 16px; }}
+        .danger {{ color: #d32f2f; }}
+        .warning-text {{ color: #ff6f00; }}
+        section {{ page-break-inside: avoid; }}
+        .text-muted {{ color: #999; font-style: italic; }}
+        h2 {{ color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; }}
+        .metadata-row {{ display: flex; gap: 20px; margin: 10px 0; flex-wrap: wrap; }}
+        .metadata-item {{ min-width: 200px; }}
+        .metadata-item strong {{ color: #666; }}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>PR #{metadata.get('pr_number', 'unknown')} - Code Review Report (Fallback)</h1>
-        <p><strong>Title:</strong> {metadata.get('title', 'Unknown')}</p>
-        <p><strong>Branch:</strong> {metadata.get('branch', 'Unknown')}</p>
-    </div>
-
-    <div class="section">
-        <h2>⚠️ Important Notice</h2>
-        <div class="warning">
-            <p><strong>This is a fallback report.</strong> The HTML template could not be fully rendered.</p>
-            <p>Please view the JSON data file for complete analysis details:</p>
-            <p><code>.ai-review/pr-{metadata.get('pr_number', 'unknown')}-data.json</code></p>
+        <h1>PR #{metadata.get('pr_number', 'unknown')} - Code Review Report</h1>
+        <div class="metadata-row">
+            <div class="metadata-item"><strong>Title:</strong> {escape_html(metadata.get('title', 'Unknown'))}</div>
+            <div class="metadata-item"><strong>Author:</strong> {escape_html(metadata.get('author', 'Unknown'))}</div>
+            <div class="metadata-item"><strong>Branch:</strong> {escape_html(metadata.get('branch', 'Unknown'))}</div>
         </div>
     </div>
 
     <div class="section">
-        <h2>Summary</h2>
+        <h2>⚠️ Report Status</h2>
+        <div class="warning">
+            <strong>This is a fallback report.</strong> The standard HTML template could not be fully rendered, but all available analysis data has been captured below.
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>📈 Summary Metrics</h2>
         <table>
             <tr>
-                <th>Metric</th>
-                <th>Value</th>
-            </tr>
-            <tr>
                 <td>Files Validated</td>
-                <td>{summary.get('files_validated', 'N/A')}</td>
+                <td><strong>{summary.get('files_validated', 'N/A')}</strong></td>
+                <td>Files Excluded</td>
+                <td><strong>{summary.get('files_excluded', 'N/A')}</strong></td>
             </tr>
             <tr>
                 <td>Critical Issues</td>
-                <td><strong style="color: red;">{summary.get('critical_issues', 0)}</strong></td>
+                <td><span class="badge critical">{summary.get('critical_issues', 0)}</span></td>
+                <td>High Issues</td>
+                <td><span class="badge high">{summary.get('high_issues', 0)}</span></td>
             </tr>
             <tr>
-                <td>High Priority Issues</td>
-                <td><strong style="color: orange;">{summary.get('high_issues', 0)}</strong></td>
-            </tr>
-            <tr>
+                <td>Bugs Detected</td>
+                <td><strong>{summary.get('bugs_detected', 0)}</strong></td>
                 <td>Test Coverage</td>
-                <td>{summary.get('test_coverage_overall', 'N/A')}</td>
+                <td><strong>{summary.get('test_coverage_overall', 'N/A')}</strong></td>
             </tr>
         </table>
     </div>
 
+    {findings_html}
+
+    {impact_html}
+
+    {files_html}
+
+    {rec_html}
+
+    {api_impact_html if api_impact_html else ''}
+
     <div class="section">
-        <h2>Generated</h2>
-        <p>{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
+        <h2>📝 Report Details</h2>
+        <p><strong>Generated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
+        <p><strong>Report Type:</strong> Fallback (Standard template unavailable)</p>
+        <p><strong>Data Source:</strong> Workflow execution with available metadata and analysis data</p>
     </div>
 </body>
 </html>"""

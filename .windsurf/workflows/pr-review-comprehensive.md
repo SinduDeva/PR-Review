@@ -1807,13 +1807,19 @@ If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
      --host localhost \
      --db pr_review_audit
 
+   **INDEPENDENT OF JSON - HAS FALLBACK**:
+   ├─ If JSON file exists: Upload complete data with findings/graph
+   ├─ If JSON missing: Creates minimal fallback data (PR metadata only)
+   ├─ Either way: Database upload proceeds (non-blocking)
+   └─ Logs status: "Database uploaded with fallback data" if JSON missing
+
    This will insert:
    - pr_review_run (1 row): Execution metadata, metrics, status
    - pr_review_step (N rows): One per workflow step with status/timing
-   - pr_review_file (M rows): One per changed file with stats
-   - pr_review_finding (K rows): One per finding with details
-   - pr_review_graph_node (X rows): Dependency graph nodes
-   - pr_review_graph_edge (Y rows): Dependency relationships
+   - pr_review_file (M rows): One per changed file with stats (if JSON available)
+   - pr_review_finding (K rows): One per finding with details (if JSON available)
+   - pr_review_graph_node (X rows): Dependency graph nodes (if JSON available)
+   - pr_review_graph_edge (Y rows): Dependency relationships (if JSON available)
 
 3. Success output:
    ✅ Connected to database: pr_review_audit
@@ -1826,6 +1832,13 @@ If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
    → Reports will still be generated (JSON, HTML, CLI)
    → User can manually upload database later if desired
    → Step 7 completes with database_uploaded=false status
+
+5. If JSON missing (fallback):
+   ⚠️ JSON file not found - using fallback data
+   ✅ Database updated with minimal metadata (PR number, author, etc.)
+   ✅ Workflow continues to Step 8 (non-blocking)
+   → Step 8 generates JSON for HTML/CLI reports
+   → Reports generated normally despite JSON initially missing
 
 5. Log in execution_status:
    database_uploaded: true|false

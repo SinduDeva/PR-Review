@@ -259,6 +259,57 @@ class DatabaseUploader:
         self.cursor.execute(sql, values)
 
 
+def _create_fallback_data(json_file: str) -> Dict[str, Any]:
+    """
+    Create minimal fallback JSON data if file is missing or invalid
+
+    This ensures database upload can proceed even if JSON generation fails in Step 8b
+    """
+    import os
+    from pathlib import Path
+
+    print("   Creating fallback JSON data...")
+
+    # Extract PR number from filename (pr-{pr_number}-data.json)
+    try:
+        filename = Path(json_file).name
+        pr_number = filename.split('-')[1] if '-' in filename else 'unknown'
+    except:
+        pr_number = 'unknown'
+
+    # Create minimal fallback structure
+    fallback_data = {
+        'pr_number': pr_number,
+        'metadata': {
+            'pr_number': pr_number,
+            'title': 'PR Analysis',
+            'author': 'unknown',
+            'reviewer': 'Automated Review System',
+            'workflow_status': 'partial_completion',
+        },
+        'execution_status': {
+            'overall_status': 'partial_completion_json_missing',
+            'execution_time_seconds': 0,
+            'notes': 'Database uploaded with fallback data (JSON generation failed)',
+        },
+        'findings': [],
+        'files_reviewed': [],
+        'impact_analysis': {
+            'risk_level': 'UNKNOWN',
+            'test_coverage': 0,
+        },
+        'repository': os.environ.get('REPO_SLUG', 'unknown'),
+        'workspace': os.environ.get('WORKSPACE', 'unknown'),
+        'source_branch': os.environ.get('SOURCE_BRANCH', 'unknown'),
+        'target_branch': os.environ.get('TARGET_BRANCH', 'unknown'),
+    }
+
+    print(f"   ⚠️  Using fallback data for PR {pr_number}")
+    print(f"   Database will be updated with minimal metadata")
+
+    return fallback_data
+
+
 def main():
     """Main entry point for database uploader"""
     if len(sys.argv) < 2:
@@ -276,9 +327,22 @@ def main():
             kwargs['db'] = sys.argv[i + 1]
 
     try:
-        # Load JSON data
-        with open(json_file, 'r') as f:
-            json_data = json.load(f)
+        # Load JSON data with fallback
+        json_data = None
+        try:
+            with open(json_file, 'r') as f:
+                json_data = json.load(f)
+            print(f"✅ Loaded JSON data from: {json_file}")
+        except FileNotFoundError:
+            print(f"⚠️  JSON file not found: {json_file}")
+            json_data = _create_fallback_data(json_file)
+        except json.JSONDecodeError:
+            print(f"⚠️  Invalid JSON file: {json_file}")
+            json_data = _create_fallback_data(json_file)
+
+        if json_data is None:
+            print("❌ Failed to load or create JSON data")
+            sys.exit(1)
 
         # Upload to database
         uploader = DatabaseUploader(**kwargs)
@@ -288,12 +352,6 @@ def main():
         print(f"   Run ID: {run_id}")
         print(f"   Database: {kwargs['db']}")
 
-    except FileNotFoundError:
-        print(f"❌ JSON file not found: {json_file}")
-        sys.exit(1)
-    except json.JSONDecodeError:
-        print(f"❌ Invalid JSON file: {json_file}")
-        sys.exit(1)
     except Exception as e:
         print(f"❌ Error: {e}")
         sys.exit(1)

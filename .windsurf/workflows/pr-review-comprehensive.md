@@ -1928,7 +1928,7 @@ Deduplicate and prioritize by:
     "pr_number": "<from Step 0>",
     "title": "<from Step 1: PR title>",
     "author": "<from Step 1: PR author>",
-    "reviewer": "Claude AI Assistant",
+    "reviewer": "Automated Review System",
     "source_branch": "<from Step 1>",
     "target_branch": "<from Step 1>",
     "branch": "<source_branch> → <target_branch>",

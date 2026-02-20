@@ -88,7 +88,7 @@ class MetadataSchema:
     # Default values for each field
     DEFAULTS = {
         MetadataFieldNames.AUTHOR: 'Unknown',
-        MetadataFieldNames.REVIEWER: 'Claude AI Assistant',
+        MetadataFieldNames.REVIEWER: 'Automated Review System',
         MetadataFieldNames.SOURCE_BRANCH: 'Unknown',
         MetadataFieldNames.TARGET_BRANCH: 'Unknown',
         MetadataFieldNames.JIRA_TICKETS: [],

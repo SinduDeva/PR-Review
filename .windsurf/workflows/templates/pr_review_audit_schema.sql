@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS pr_review_run (
     workspace VARCHAR(255) COMMENT 'Workspace/organization name',
     source_branch VARCHAR(255) NOT NULL COMMENT 'Source branch name',
     target_branch VARCHAR(255) NOT NULL COMMENT 'Target branch name',
-    reviewer VARCHAR(255) DEFAULT 'Claude AI' COMMENT 'Who performed the review',
+    reviewer VARCHAR(255) DEFAULT 'Automated Review System' COMMENT 'Who performed the review',
     workflow_file VARCHAR(255) COMMENT 'Path to workflow file',
     workflow_sha256 VARCHAR(64) COMMENT 'SHA256 checksum of workflow',
     started_at DATETIME COMMENT 'When execution started',

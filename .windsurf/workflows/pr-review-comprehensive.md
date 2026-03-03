@@ -1668,7 +1668,12 @@ For each changed file:
 
 ### Step 8: Aggregate Findings & Generate Reports
 
-**Goal**: Create comprehensive, actionable reports with minimal tokens (OPTIONAL - last step)
+**⚠️ CRITICAL REQUIREMENT**: Steps 0-5 must complete FULLY before Step 8 starts
+
+This step ONLY executes after all analysis is collected in Steps 0-5.
+Do NOT skip Steps 0-5. All analysis must be complete in-memory before reports can be generated.
+
+**Goal**: Create comprehensive, actionable reports with all analysis data
 
 #### 8a: Consolidate All Analysis Results
 
@@ -1720,24 +1725,66 @@ Deduplicate and prioritize by:
 
 **BEFORE generating any reports**, validate all analysis is complete:
 
-```python
-from analysis_validator import validate_analysis_completion, get_validation_report
+**Verify in order (MUST complete BEFORE proceeding)**:
 
-# Check if analysis is complete
-is_complete, missing_fields, warnings = validate_analysis_completion(analysis_data)
+```
+1. WAIT FOR STEPS 4-5:
+   - Steps 4 and 5 must COMPLETE before Step 8 can start
+   - If still running: Wait (poll every 5 seconds)
+   - If not completed after 5 minutes: BLOCK step 8, return error
 
-# Print validation report
-report = get_validation_report(is_complete, missing_fields, warnings)
-print(report)
+   Output:
+   ✅ "Steps 4-5 analysis complete - proceeding to validation"
+   OR
+   ❌ "Timeout waiting for Steps 4-5 - cannot proceed"
 
-if not is_complete:
-    print("❌ CANNOT GENERATE REPORTS - Analysis incomplete")
-    print("Missing fields:")
-    for field in missing_fields:
-        print(f"  - {field}")
-    sys.exit(1)
+2. VERIFY ALL REQUIRED FIELDS exist in analysis_data:
 
-print("✅ Analysis complete - proceeding with report generation")
+   ✅ METADATA:
+   - [ ] pr_number
+   - [ ] author
+   - [ ] reviewer
+
+   ✅ SUMMARY:
+   - [ ] files_changed
+   - [ ] files_validated
+   - [ ] critical_issues, high_issues, medium_issues, low_issues
+
+   ✅ CODE FINDINGS:
+   - [ ] findings array exists (can be empty)
+
+   ✅ SPRING BOOT VALIDATION:
+   - [ ] architecture score
+   - [ ] security score
+   - [ ] performance score
+   - [ ] transaction score
+
+   ✅ TEST COVERAGE:
+   - [ ] overall coverage
+   - [ ] unit/integration breakdown
+
+   ✅ API CHANGES:
+   - [ ] api_changes array exists (can be empty)
+
+   ✅ IMPACT ANALYSIS:
+   - [ ] risk_level
+   - [ ] affected_apis/components
+
+   ✅ RECOMMENDATIONS:
+   - [ ] decision (APPROVE/REQUEST_CHANGES/BLOCK)
+   - [ ] reason
+
+3. VALIDATION RESULT:
+
+   If ALL fields present:
+     ✅ "VALIDATION PASSED - All required analysis fields complete"
+     → Proceed to STEP 2 (JIRA posting)
+
+   If ANY field missing:
+     ❌ "VALIDATION FAILED - Missing required fields:"
+     → List missing fields
+     → STOP (do not generate reports)
+     → Output: "Re-run Steps 4-5 to complete analysis"
 ```
 
 **VALIDATION REQUIREMENTS** (all must be true):
@@ -1787,7 +1834,7 @@ print("✅ Analysis complete - proceeding with report generation")
     "jira_warning": "<null if tickets found, else warning message>",
     "review_date": "<current ISO date>",
     "workflow_start_time": "<timestamp when Step 0 started>",
-    "workflow_end_time": "<timestamp when Step 6 completes>",
+    "workflow_end_time": "<timestamp when Step 5 completes>",
     "execution_time_seconds": "<calculated difference>",
     "review_id": "PR-<pr_number>-<YYYYMMDD-HHMMSS>"
   },

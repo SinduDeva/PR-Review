@@ -559,34 +559,62 @@ def generate_fallback_html(context):
     return html
 
 
-def main():
-    """Command line interface for testing"""
-    import sys
+def save_html_report(data, output_file=None):
+    """Save generated HTML report to file
 
-    if len(sys.argv) != 2:
-        print("Usage: python generate-html.py <json_data_file>")
-        sys.exit(1)
+    Args:
+        data: Dict with analysis results from workflow
+        output_file: Optional output path (auto-generated if not provided)
 
-    json_file = sys.argv[1]
-
+    Returns:
+        output_file path if successful, None otherwise
+    """
     try:
-        with open(json_file, 'r', encoding='utf-8-sig') as f:
-            data = json.load(f)
-
         html = generate_html_report(data)
+    except Exception as e:
+        print(f"⚠️ Warning generating HTML: {e}")
+        # Generate minimal fallback HTML
+        html = f"""<html>
+<head><title>PR Review Report</title></head>
+<body>
+<h1>Error generating detailed HTML report</h1>
+<p>An error occurred while generating the detailed HTML report.</p>
+<p>Please contact support for assistance.</p>
+</body>
+</html>"""
 
-        # Output HTML
-        output_file = json_file.replace('.json', '.html')
+    # Determine output file
+    if not output_file:
+        try:
+            pr_number = data.get('metadata', {}).get('pr_number', 'unknown')
+            output_file = f".ai-review/pr-{pr_number}-data.html"
+        except Exception:
+            output_file = ".ai-review/pr-unknown-data.html"
+
+    # Save HTML
+    try:
+        import os
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html)
 
-        print(f"HTML report generated: {output_file}")
-
+        print(f"✅ HTML report generated: {output_file}")
+        return output_file
     except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        print(f"❌ Error saving HTML report: {e}")
+        return None
+
 
 if __name__ == "__main__":
-    main()
+    # NOTE: This script is designed to be imported and used by the workflow.
+    # It receives analysis_data directly from workflow execution.
+    #
+    # Example usage in workflow:
+    # from generate_html import generate_html_report, save_html_report
+    # html = generate_html_report(analysis_data)  # Get HTML string
+    # save_html_report(analysis_data, ".ai-review/pr-123-data.html")  # Save to file
+
+    print("❌ This script is designed for workflow integration, not standalone use.")
+    print("   Import the functions instead:")
+    print("   - generate_html_report(analysis_data) -> str")
+    print("   - save_html_report(analysis_data, output_file) -> str")

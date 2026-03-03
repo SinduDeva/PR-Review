@@ -347,47 +347,52 @@ def print_generated_files(metadata):
     
     print("\n" + "\u2501" * 70 + "\n")
 
-def format_cli_output(data_file):
-    """Main function to format CLI output"""
-    
-    # Load review data
-    with open(data_file, 'r') as f:
-        data = json.load(f)
-    
+def format_cli_output(data):
+    """Main function to format CLI output from workflow analysis data
+
+    Args:
+        data: Dict with analysis results from workflow
+    """
     # Print each section
     print_header()
     print_file_detection_info(data.get('pagination_metadata'))
     print_pagination_info(data.get('pagination_metadata'))
-    print_summary(data['summary'])
-    print_critical_findings(data['findings'])
-    print_spring_validation(data['spring_boot_validation'])
-    print_test_coverage(data['test_coverage'])
-    print_api_impact(data['api_changes'])
+    print_summary(data.get('summary', {}))
+    print_critical_findings(data.get('findings', []))
+    print_spring_validation(data.get('spring_boot_validation', {}))
+    print_test_coverage(data.get('test_coverage', {}))
+    print_api_impact(data.get('api_changes', []))
     print_recommendation(data)
-    print_generated_files(data['metadata'])
+    print_generated_files(data.get('metadata', {}))
 
-def format_compact_output(data):
-    """Compact single-line output for CI/CD pipelines"""
-    pr = data['metadata']['pr_number']
-    critical = data['summary']['critical_issues']
-    high = data['summary']['high_issues']
+def format_cli_summary(data):
+    """Compact single-line summary for workflow output
+
+    Args:
+        data: Dict with analysis results from workflow
+    """
+    pr = data.get('metadata', {}).get('pr_number', 'unknown')
+    summary = data.get('summary', {})
+    critical = summary.get('critical_issues', 0)
+    high = summary.get('high_issues', 0)
     coverage = data.get('test_coverage', {}).get('overall', 'N/A')
     rec_raw = data.get('overall_recommendation', 'APPROVE')
     rec = rec_raw.get('decision', 'APPROVE') if isinstance(rec_raw, dict) else rec_raw
-    
+
     status_emoji = "\u2705" if rec == "APPROVE" else "\u26a0\ufe0f"
-    
+
     print(f"{status_emoji} PR#{pr} | Critical: {critical} | High: {high} | Coverage: {coverage} | {rec}")
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print("Usage: python cli_formatter.py <review-data.json> [--compact]")
-        sys.exit(1)
-    
-    data_file = sys.argv[1]
-    
-    if '--compact' in sys.argv:
-        with open(data_file) as f:
-            format_compact_output(json.load(f))
-    else:
-        format_cli_output(data_file)
+    # NOTE: This script is designed to be imported and used by the workflow.
+    # It receives analysis_data directly from workflow execution.
+    #
+    # Example usage in workflow:
+    # from cli_formatter import format_cli_output, format_cli_summary
+    # format_cli_output(analysis_data)  # Full output
+    # format_cli_summary(analysis_data)  # Compact summary
+
+    print("❌ This script is designed for workflow integration, not standalone use.")
+    print("   Import the functions instead:")
+    print("   - format_cli_output(analysis_data)")
+    print("   - format_cli_summary(analysis_data)")

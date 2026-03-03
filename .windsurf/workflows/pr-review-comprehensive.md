@@ -2618,7 +2618,7 @@ Step 9: All critical outputs exist, unlock workflow
 
 **Implementation**: Use try-finally logic to ensure Step 9 always executes, preventing permanent lock.
 
-**UNLOCK WORKFLOW FILE - EXECUTION FINISHED**:
+**GENERATE FINAL SUMMARY & UNLOCK - EXECUTION FINISHED**:
 ```bash
 # Use try-finally pattern to guarantee execution
 try:
@@ -2626,8 +2626,25 @@ try:
   # May succeed, partially succeed, or fail
 finally:
   # Step 9 ALWAYS executes, regardless of above results
+
+  # STEP 9a: Generate final summary (regardless of success/failure)
+  python .windsurf/workflows/templates/summary_generator.py \
+    --pr {pr_number} \
+    --execution-status {execution_status} \
+    --summary-output .ai-review/pr-{pr_number}-summary.txt
+
+  # Output summary to console
+  echo ""
+  echo "═════════════════════════════════════════════════════"
+  echo "  WORKFLOW EXECUTION SUMMARY"
+  echo "═════════════════════════════════════════════════════"
+  cat .ai-review/pr-{pr_number}-summary.txt
+  echo "═════════════════════════════════════════════════════"
+  echo ""
+
+  # STEP 9b: Unlock workflow file
   python .windsurf/workflows/templates/workflow_lock.py \
-    .windsurf/workflows/pr-review-comprehensive.html \
+    .windsurf/workflows/pr-review-comprehensive.md \
     unlockfile
 
 Expected output:
@@ -2637,8 +2654,54 @@ Result: Workflow file is restored to WRITABLE state.
         Cascade IDE and users can edit it again.
         Lock is automatically released after completion.
 
-GUARANTEE: This step ALWAYS executes, even if earlier steps failed or were partially skipped.
-           Ensures workflow is NEVER permanently locked and cleanup always happens.
+GUARANTEE: This step ALWAYS executes, even if earlier steps failed or were partially skipped:
+           ✅ Final summary is ALWAYS generated (success, partial, or failure)
+           ✅ Execution status is printed to console
+           ✅ Results are saved to summary file
+           ✅ Workflow file is ALWAYS unlocked (never permanently locked)
+           ✅ Cleanup always happens
+```
+
+**Summary Content** (always generated):
+```
+═════════════════════════════════════════════════════════
+PR #{pr_number} - Code Review Summary
+═════════════════════════════════════════════════════════
+
+📋 EXECUTION STATUS:
+  Overall: {overall_status} (completed|completed_with_warnings|completed_with_errors|aborted)
+  Duration: {execution_time_seconds} seconds
+  Successful Steps: {successful_steps}/{total_steps}
+
+📊 FINDINGS SUMMARY:
+  Critical Issues: {critical_count}
+  High Issues: {high_count}
+  Medium Issues: {medium_count}
+  Low Issues: {low_count}
+  Total: {total_count}
+
+📁 FILES ANALYZED:
+  Files Changed: {files_changed}
+  Files Validated: {files_validated}
+  Files Excluded: {files_excluded} (test/doc files)
+
+✅ OUTPUTS GENERATED:
+  ✅ JIRA Comment: {jira_status} {jira_tickets}
+  ✅ HTML Report: .ai-review/pr-{pr_number}-data.html
+  ✅ CLI Summary: printed to console
+  ⏳ JSON Data: .ai-review/pr-{pr_number}-data.json {json_status}
+  ⏳ Database: {db_status}
+
+🎯 RECOMMENDATION:
+  Decision: {decision} (APPROVE|REQUEST_CHANGES|BLOCK)
+  Action: {next_steps}
+
+⚠️ NOTES/WARNINGS:
+  {warnings_list}
+
+═════════════════════════════════════════════════════════
+Workflow Execution Completed
+═════════════════════════════════════════════════════════
 ```
 
 ---
@@ -2693,11 +2756,13 @@ GUARANTEE: This step ALWAYS executes, even if earlier steps failed or were parti
     ├── cli_formatter.py                # CLI output formatter
     ├── json_saver.py                   # JSON archival script
     ├── database_uploader.py            # Database integration script
-    └── workflow_lock.py                # Workflow lock/unlock script
+    ├── workflow_lock.py                # Workflow lock/unlock script
+    └── summary_generator.py            # Final summary generator (Step 9)
 
 .ai-review/                             # Generated per-run (gitignored)
-├── pr-{pr_number}-data.html              # Generated HTML report
+├── pr-{pr_number}-data.html            # Generated HTML report
 ├── pr-{pr_number}-data.json            # Review data JSON (optional)
+├── pr-{pr_number}-summary.txt          # Final execution summary (always generated)
 └── index.json                          # Run history index
 ```
 

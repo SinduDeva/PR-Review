@@ -1890,14 +1890,17 @@ Deduplicate and prioritize by:
 4. LOW - Style, documentation
 ```
 
-#### 8b: Generate JSON Data File for Reports
+#### 8b: Build Analysis Data in Memory & Generate Reports
 
-**🔴 CRITICAL - CODE ANALYSIS & IMPACT SUMMARY REQUIRED**
+**🔴 CRITICAL - INDEPENDENT OF JSON FILE EXISTENCE**
 
-**Requirement**: The JSON file is the SINGLE SOURCE OF TRUTH for all three report formats:
+**Requirement**: Reports must be generated from **in-memory data** FIRST, then JSON file is saved LAST:
 - ✅ HTML Report (generate-html.py) - displays all findings, severity breakdown, impact analysis
 - ✅ JIRA Comment (jira_formatter.py) - includes code analysis findings and risk assessment
 - ✅ CLI Summary (cli_formatter.py) - shows issue counts, top findings, impact summary
+- ✅ JSON File (json_saver.py) - saves data LAST (non-blocking, optional)
+
+**KEY CHANGE**: If JSON file writing fails, reports are ALREADY GENERATED and available
 
 **MANDATORY FIELDS FOR ALL REPORTS**:
 1. **Code Analysis Data** (from Steps 3-5):
@@ -2191,11 +2194,14 @@ Deduplicate and prioritize by:
 
 **IMPORTANT**: Do NOT put example/dummy data in the JSON. Every value must come from the actual analysis performed in Steps 0-5.
 
-#### 8c: Generate HTML Report and CLI Output
+#### 8c: Generate Reports from In-Memory Data (NOT dependent on JSON file)
 
 **Actions** (execute these commands — do NOT skip):
 
 ```
+⚠️ CRITICAL WORKFLOW CHANGE: Reports are generated BEFORE JSON file is saved
+This ensures reports exist even if JSON file writing fails in Cascade
+
 1. Ensure .ai-review/ directory exists:
    mkdir -p .ai-review   (or New-Item -ItemType Directory -Force .ai-review on Windows)
 
@@ -2208,52 +2214,99 @@ Deduplicate and prioritize by:
    - Keep latest reports in .ai-review/ root for easy access
    - Output: "✅ Archived: pr-{pr_number}-data.json → run-N/"
 
-3. Save the JSON from Step 6b to file:
-   Write the complete JSON object to: .ai-review/pr-{pr_number}-data.json
+3. GENERATE HTML REPORT ⭐ MANDATORY (uses in-memory data, NOT JSON file):
 
-   **IMPLEMENTATION** (use json_saver.py - cross-platform):
+   **IMPLEMENTATION** (pass analysis data directly):
    ```bash
-   # Use existing json_saver.py script to save analysis data
-   # Pass JSON via stdin to avoid Cascade file creation restrictions
+   python .windsurf/workflows/templates/generate-html.py \
+     --metadata '{metadata_json}' \
+     --findings '{findings_json}' \
+     --impact '{impact_analysis_json}' \
+     --files '{files_reviewed_json}' \
+     --api '{api_changes_json}'
+   ```
+
+   OR pass complete analysis_data object:
+   ```python
+   # In workflow script, call directly:
+   from generate_html import generate_html_report
+   html_content = generate_html_report(analysis_data)
+   with open('.ai-review/pr-{pr_number}-data.html', 'w') as f:
+       f.write(html_content)
+   ```
+
+   ✅ GUARANTEED TO COMPLETE - even if generate-html.py fails, use fallback HTML
+   ✅ INCLUDES CODE ANALYSIS: All findings, severity breakdown, affected files
+   ✅ INCLUDES IMPACT SUMMARY: Risk level, affected APIs, test coverage
+
+   **CRITICAL**: If generate-html.py fails:
+   - DO NOT skip HTML generation
+   - Generate minimal fallback HTML with code analysis data
+   - Include: findings table, severity breakdown, affected files list
+   - Include: impact analysis, risk level, execution status
+   - Output: .ai-review/pr-{pr_number}-data.html (fallback version)
+
+   Output: .ai-review/pr-{pr_number}-data.html
+
+4. GENERATE JIRA COMMENT FILE (from in-memory analysis_data):
+
+   **IMPLEMENTATION** (pass analysis data directly):
+   ```python
+   from jira_formatter import format_jira_comment
+   jira_comment = format_jira_comment(analysis_data)
+   with open('.ai-review/pr-{pr_number}-jira-comment.txt', 'w') as f:
+       f.write(jira_comment)
+   ```
+
+   ✅ INCLUDES CODE ANALYSIS: All findings with context
+   ✅ INCLUDES IMPACT SUMMARY: Risk assessment, API impacts, recommendations
+
+   Output: .ai-review/pr-{pr_number}-jira-comment.txt
+
+5. PRINT CLI SUMMARY (from in-memory analysis_data):
+
+   **IMPLEMENTATION** (pass analysis data directly):
+   ```python
+   from cli_formatter import format_cli_summary
+   cli_output = format_cli_summary(analysis_data)
+   print(cli_output)
+   ```
+
+   ✅ INCLUDES CODE ANALYSIS: Issue counts by severity, top findings
+   ✅ INCLUDES IMPACT SUMMARY: Risk level, affected components, next steps
+
+   Output: Printed to stdout for immediate visibility
+
+6. SAVE JSON FILE LAST (non-blocking — if fails, reports already exist):
+
+   **ONLY AFTER reports are generated**, save JSON for archival:
+   ```bash
    python .windsurf/workflows/templates/json_saver.py --pr {pr_number} << 'EOF'
-   {
-       "pr_number": {pr_number},
-       "pr_title": "{pr_title}",
-       "pr_description": "{pr_description}",
-       "findings": {findings_array},
-       "files_reviewed": {files_reviewed_array},
-       "impact_analysis": {impact_analysis_dict},
-       "execution_status": {execution_status_dict}
-   }
+   {complete analysis_data object}
    EOF
    ```
 
-   **Why use json_saver.py?**
-   - ✅ Cross-platform: Works on Windows, Linux, macOS
-   - ✅ Cascade-safe: Calls existing script, no file creation
-   - ✅ Proper error handling: try-catch inside script
-   - ✅ UTF-8 encoding: No BOM, properly formatted JSON
-   - ✅ Tested: Script already exists and works
+   **Why save JSON last?**
+   - ✅ Reports already exist in .ai-review/
+   - ✅ If JSON save fails: No impact on reports
+   - ✅ Cascade file creation issues don't block reports
+   - ✅ User gets complete analysis regardless
 
    **Error Handling**:
-   - If json_saver.py fails: Continue with fallback reports
+   - If json_saver.py fails: Log warning, continue
    - Set flag: json_file_created = (exit code == 0)
-   - Generate reports regardless of JSON status
+   - Reports already exist, so workflow proceeds to Step 9
 
    ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
 
    **Purpose**: Allow workflow to be run multiple times on the same PR without conflicts.
 
-   **Behavior**:
-   - ✅ **First run**: Creates new report files
-   - ✅ **Subsequent runs**: Archives old reports, then creates new ones
-   - ✅ **No file conflicts**: Old reports moved to run-N/ subdirectories
-   - ✅ **No cooldown**: Re-run as many times as needed, immediately
-
    **Files in .ai-review/ Root (Latest)**:
-   - .ai-review/pr-{pr_number}-data.json ← Latest analysis data
-   - .ai-review/pr-{pr_number}-data.html ← Regenerated from JSON
-   - .ai-review/pr-{pr_number}-jira-comment.txt ← Regenerated from JSON
+   - .ai-review/pr-{pr_number}-data.html ← HTML Report (ALWAYS created)
+   - .ai-review/pr-{pr_number}-jira-comment.txt ← JIRA Comment (ALWAYS created)
+   - .ai-review/pr-{pr_number}-data.json ← JSON file (created if save succeeds)
+
+   **Key Difference**: JSON is optional, reports are mandatory
 
    **Use Cases for Re-Execution**:
    1. **PR updated with new commits** → Re-run to analyze latest changes
@@ -2261,68 +2314,67 @@ Deduplicate and prioritize by:
    3. **Reports corrupted** → Re-run to regenerate
    4. **Testing workflow** → Re-run as many times as needed
 
-   **Important**: This is NOT destructive. Old reports are simply replaced with new ones.
-   The workflow is designed to be re-executable by default.
-
-   **ERROR HANDLING FOR JSON GENERATION**:
-   ```bash
-   # Check if JSON file was created successfully
-   if [ -f ".ai-review/pr-{pr_number}-data.json" ]; then
-       echo "✅ JSON report created successfully"
-       json_status="success"
-   else
-       echo "⚠️ JSON report creation failed or skipped"
-       echo "   Workflow will continue with fallback reports"
-       json_status="failed"
-   fi
-   ```
-
-   **If JSON fails, continue with fallback**:
-   - Fallback reports generated from available data in workflow variables
-   - HTML, JIRA, CLI reports will still be created
-   - No Cascade file creation errors
-   - User gets reports even if JSON generation fails
-
-3. Generate HTML report ⭐ MANDATORY (ZERO LLM tokens — uses external template):
-   python .windsurf/workflows/templates/generate-html.py .ai-review/pr-{pr_number}-data.json
-
-   ✅ GUARANTEED TO COMPLETE - even if Python script fails, use fallback HTML generation
-   ✅ INCLUDES CODE ANALYSIS: All findings, severity breakdown, affected files
-   ✅ INCLUDES IMPACT SUMMARY: Risk level, affected APIs, test coverage, mitigation suggestions
-
-   This reads pr-review-template.html and renders the full interactive report.
-
-   **CRITICAL**: If generate-html.py fails:
-   - DO NOT skip HTML generation
-   - Generate minimal fallback HTML with code analysis data
-   - Include: findings table, severity breakdown, affected files list
-   - Include: impact analysis, risk level, JIRA ticket, execution status
-   - Output: .ai-review/pr-{pr_number}-data.html (fallback version)
-
-   Output: .ai-review/pr-{pr_number}-data.html
-
-4. Generate JIRA comment file (for Step 7):
-   python .windsurf/workflows/templates/jira_formatter.py .ai-review/pr-{pr_number}-data.json
-
-   ✅ INCLUDES CODE ANALYSIS: All findings with context
-   ✅ INCLUDES IMPACT SUMMARY: Risk assessment, API impacts, recommendations
-
-   Output: .ai-review/pr-{pr_number}-jira-comment.txt
-
-5. Print CLI summary:
-   python .windsurf/workflows/templates/cli_formatter.py .ai-review/pr-{pr_number}-data.json
-
-   ✅ INCLUDES CODE ANALYSIS: Issue counts by severity, top findings
-   ✅ INCLUDES IMPACT SUMMARY: Risk level, affected components, next steps
-
-5b. Update master index (for report tracking):
-   python .windsurf/workflows/templates/report_manager.py {pr_number} .ai-review/pr-{pr_number}-data.json
+7. Update master index (for report tracking):
+   python .windsurf/workflows/templates/report_manager.py {pr_number} analysis_data
 
    This will:
    - Update .ai-review/index.json with current run metadata
    - Log run number, timestamp, issue counts, JIRA ticket
    - Track complete run history for this PR
    - Output: "✅ Index updated: .ai-review/index.json"
+```
+
+---
+
+#### 8d: Architecture: Reports Independent of JSON Files
+
+**PROBLEM SOLVED** ✅: Cascade JSON file writing issues
+
+**OLD ARCHITECTURE** (broken in Cascade):
+```
+Workflow Data → JSON File Write → Read JSON → Generate HTML → Generate JIRA → Print CLI
+                        ↓
+                   If this fails, all reports fail ❌
+```
+
+**NEW ARCHITECTURE** (Cascade-safe):
+```
+Workflow Data → Generate HTML (in-memory) ✅
+            → Generate JIRA (in-memory) ✅
+            → Print CLI (in-memory) ✅
+            → Save JSON File (non-blocking) ✅
+                        ↓
+            If JSON save fails: Reports already exist ✓
+```
+
+**Why This Works**:
+1. **Analysis data never leaves memory** during report generation
+2. **Reports created in-memory first** (HTML, JIRA, CLI)
+3. **JSON saved last** (for archival, optional)
+4. **If JSON write fails**: Reports are already on disk, workflow succeeds
+5. **Cascade-safe**: No dependency on file I/O success
+
+**Data Flow**:
+```
+Step 8a: Build analysis_data in memory
+  ├─ metadata, findings, impact_analysis, api_changes
+  └─ files_reviewed, recommendations, test_coverage
+
+Step 8c: Generate reports from analysis_data
+  ├─ generate_html_report(analysis_data) → .html file
+  ├─ format_jira_comment(analysis_data) → .txt file
+  ├─ format_cli_summary(analysis_data) → stdout
+  └─ json_saver.py(analysis_data) → .json file (non-blocking)
+
+Step 9: All reports exist, unlock workflow
+```
+
+**Benefits**:
+- ✅ Reports always generated (even if JSON fails)
+- ✅ Cascade-compatible (no file creation blocking)
+- ✅ User gets complete analysis in all formats
+- ✅ JSON is optional archival, not critical
+- ✅ Faster execution (reports created once, in parallel)
 
 6. Open HTML report in browser automatically:
 

@@ -2294,78 +2294,95 @@ print("✅ Analysis complete - proceeding with report generation")
 
 **⚠️ PREREQUISITE**: Analysis validation gate (8b-GATE) must pass before proceeding!
 
-**EXECUTION**: Call ExecutionOrchestrator with aggregated analysis data
+**GOAL**: Generate and deliver final reports using ExecutionOrchestrator
 
 **Actions** (execute in THIS exact order — do NOT skip):
 
-```python
-from execution_orchestrator import ExecutionOrchestrator
+```
+STEP 1: VALIDATE ALL ANALYSIS IS COMPLETE (8b-GATE)
+========================================================
 
-# EXECUTION:
-try:
-    # Aggregate all analysis data from Steps 0-7
-    aggregated_analysis = {
-        'metadata': review_data.get('metadata', {}),
-        'summary': review_data.get('summary', {}),
-        'pagination_metadata': review_data.get('pagination_metadata', {}),
-        'findings': review_data.get('findings', []),
-        'files_reviewed': review_data.get('files_reviewed', []),
-        'files_skipped': review_data.get('files_skipped', []),
-        'spring_boot_validation': review_data.get('spring_boot_validation', {}),
-        'test_coverage': review_data.get('test_coverage', {}),
-        'api_changes': review_data.get('api_changes', []),
-        'impact_analysis': review_data.get('impact_analysis', {}),
-        'overall_recommendation': review_data.get('overall_recommendation', {}),
-        'recommendations': review_data.get('recommendations', []),
-        'positive_observations': review_data.get('positive_observations', []),
-        'ai_summary': review_data.get('ai_summary', ''),
-        'execution_status': execution_status
-    }
+From aggregated analysis data (all findings from Steps 4-5):
+- Verify: metadata.pr_number exists
+- Verify: metadata.author exists
+- Verify: summary has all fields (files_changed, critical_issues, etc.)
+- Verify: findings array exists (can be empty)
+- Verify: overall_recommendation.decision is set
+- Verify: impact_analysis.summary exists
 
-    # Get PR number for orchestrator
-    pr_number = review_data.get('metadata', {}).get('pr_number')
+If validation FAILS:
+  → Print: "❌ ANALYSIS INCOMPLETE - Cannot generate reports"
+  → List missing fields
+  → Block report generation
 
-    # Create orchestrator and execute (in-memory data only, no files)
-    print("\n" + "=" * 80)
-    print("EXECUTING REPORTS: Validate → JIRA → HTML → CLI")
-    print("=" * 80)
+If validation PASSES:
+  → Continue to JIRA generation
 
-    orchestrator = ExecutionOrchestrator(
-        analysis_data=aggregated_analysis,
-        pr_number=pr_number,
-        verbose=True
-    )
 
-    # Execute report generation in correct order
-    success = orchestrator.execute()
+STEP 2: GENERATE JIRA COMMENT (CRITICAL - MUST COMPLETE)
+=========================================================
 
-    # Update execution status with orchestrator results
-    execution_status['steps']['step_8_reports'] = {
-        'status': 'success' if success else 'completed_with_warnings',
-        'validation': orchestrator.phases['validation']['message'],
-        'jira': orchestrator.phases['jira']['message'],
-        'html': orchestrator.phases['html']['message'],
-        'cli': orchestrator.phases['cli']['message']
-    }
+Call the Python script to handle JIRA:
 
-    if not success:
-        print("\n⚠️ WARNING: Some report phases failed - check output above")
-        print("   But critical outputs (JIRA and HTML) should exist")
-        # Continue workflow - don't block
+  python .windsurf/workflows/templates/execution_orchestrator.py \
+    --pr {pr_number} \
+    --phase jira
 
-except Exception as e:
-    print(f"\n❌ ERROR in report generation: {e}")
-    import traceback
-    traceback.print_exc()
-    execution_status['steps']['step_8_reports'] = {
-        'status': 'failed_with_fallback',
-        'error': str(e)
-    }
-    # Continue workflow - don't block
+This will:
+  1. Format complete analysis as plain text (no JSON files)
+  2. Include: findings, impact analysis, recommendations
+  3. Save to: .ai-review/pr-{pr_number}-jira-comment.txt
+  4. Attempt to post to JIRA via MCP (non-blocking if fails)
+  5. Log success/failure
 
-# JSON and Database are now OPTIONAL and NOT NEEDED
-# ExecutionOrchestrator handles all critical report generation
-# (JIRA, HTML auto-open, CLI summary)
+✅ MUST COMPLETE - Team sees analysis via JIRA
+
+
+STEP 3: GENERATE & AUTO-OPEN HTML REPORT (CRITICAL - MUST COMPLETE)
+====================================================================
+
+Call the Python script to handle HTML:
+
+  python .windsurf/workflows/templates/execution_orchestrator.py \
+    --pr {pr_number} \
+    --phase html
+
+This will:
+  1. Generate HTML from in-memory analysis data
+  2. Include: all findings, impact analysis, Spring Boot validation, test coverage
+  3. Save to: .ai-review/pr-{pr_number}-data.html
+  4. AUTO-OPEN in default browser
+  5. Log success/failure
+
+✅ MUST COMPLETE - User sees detailed report in browser
+
+
+STEP 4: GENERATE CLI SUMMARY (SECONDARY - Non-blocking)
+=========================================================
+
+Call the Python script to handle CLI:
+
+  python .windsurf/workflows/templates/execution_orchestrator.py \
+    --pr {pr_number} \
+    --phase cli
+
+This will:
+  1. Print CLI summary to stdout
+  2. Save to: .ai-review/pr-{pr_number}-cli-output.txt
+  3. Include: issue counts, findings, recommendations
+  4. Log success/failure
+
+✅ OPTIONAL - User gets terminal feedback (can fail without blocking)
+
+
+FINAL RESULT:
+=============
+
+✅ Team has JIRA comment with complete analysis
+✅ User has HTML report auto-opened in browser
+✅ Terminal has CLI summary (if successful)
+✅ All critical outputs exist even if some phases fail
+✅ Workflow continues to Step 9 (Unlock)
 ```
 
 ---

@@ -568,6 +568,8 @@ def main():
     parser.add_argument('analysis_file', nargs='?', default='-', help='JSON analysis file (or - for stdin)')
     parser.add_argument('--pr', type=int, help='PR number')
     parser.add_argument('--data', type=str, help='JSON data as string')
+    parser.add_argument('--phase', choices=['validate', 'jira', 'html', 'cli', 'all'], default='all',
+                        help='Which phase to execute (validate, jira, html, cli, or all)')
     parser.add_argument('--quiet', action='store_true', help='Suppress verbose output')
 
     args = parser.parse_args()
@@ -582,9 +584,20 @@ def main():
             with open(args.analysis_file, 'r', encoding='utf-8-sig') as f:
                 analysis_data = json.load(f)
 
-        # Execute orchestration
+        # Create orchestrator
         orch = ExecutionOrchestrator(analysis_data, pr_number=args.pr, verbose=not args.quiet)
-        success = orch.execute()
+
+        # Execute specific phase or all phases
+        if args.phase == 'all':
+            success = orch.execute()
+        elif args.phase == 'validate':
+            success = orch.phase_0_validate_analysis()
+        elif args.phase == 'jira':
+            success = orch.phase_1_update_jira()
+        elif args.phase == 'html':
+            success = orch.phase_2_generate_html()
+        elif args.phase == 'cli':
+            success = orch.phase_3_generate_cli()
 
         sys.exit(0 if success else 1)
 

@@ -6,11 +6,9 @@ EXECUTION ORDER:
   1. JIRA Update (from in-memory data) - CRITICAL
   2. Database Update (from in-memory data) - CRITICAL
   3. CLI Generate - SECONDARY
-  4. JSON Save - SECONDARY
-  5. HTML Generate - OPTIONAL
+  4. HTML Generate - OPTIONAL
 
 This ensures JIRA and DB are updated before any local output generation.
-JIRA/CLI/JSON are text formats. HTML is visual.
 
 Usage:
     python execution_orchestrator.py analysis.json --pr 123
@@ -51,7 +49,6 @@ class ExecutionOrchestrator:
             'jira': {'success': False, 'message': '', 'critical': False},  # Non-blocking output
             'database': {'success': False, 'message': '', 'critical': True},
             'cli': {'success': False, 'message': '', 'critical': False},
-            'json': {'success': False, 'message': '', 'critical': False},
             'html': {'success': False, 'message': '', 'critical': False},
         }
 
@@ -458,63 +455,37 @@ class ExecutionOrchestrator:
             return False
 
     # ============================================================================
-    # PHASE 4: JSON SAVE (SECONDARY - Can fail without blocking)
+    # PHASE 4: HTML GENERATE (OPTIONAL - Can fail without blocking)
     # ============================================================================
 
-    def phase_4_save_json(self) -> bool:
-        """PHASE 4: Save JSON (SECONDARY - Can fail without blocking)"""
+    def phase_4_generate_html(self) -> bool:
+        """PHASE 4: Generate HTML (OPTIONAL - Can fail without blocking)"""
         try:
-            self.log("\n[PHASE 4/5] SAVING JSON (SECONDARY)...", "INFO")
+            self.log("\n[PHASE 4/4] GENERATING HTML (OPTIONAL)...", "INFO")
 
-            json_file = self.output_dir / f"pr-{self.pr_number}-data.json"
-            json_str = json.dumps(self.analysis_data, indent=2, ensure_ascii=False, default=str)
-
-            with open(json_file, 'w', encoding='utf-8') as f:
-                f.write(json_str)
-
-            size = json_file.stat().st_size
-            msg = f"JSON saved: {json_file} ({size} bytes)"
-            self.log(f"✅ {msg}", "SUCCESS")
-            self.phases['json']['success'] = True
-            self.phases['json']['message'] = msg
-
-            return True
-
-        except Exception as e:
-            msg = f"JSON save failed: {e}"
-            self.log(f"⚠️  {msg}", "WARNING")
-            self.phases['json']['message'] = msg
-            return False
-
-    # ============================================================================
-    # PHASE 5: HTML GENERATE (OPTIONAL - Can fail without blocking)
-    # ============================================================================
-
-    def phase_5_generate_html(self) -> bool:
-        """PHASE 5: Generate HTML (OPTIONAL - Can fail without blocking)"""
-        try:
-            self.log("\n[PHASE 5/5] GENERATING HTML (OPTIONAL)...", "INFO")
-
-            gen = Path(".windsurf/workflows/templates/generate-html.py")
+            gen = Path(".windsurf/workflows/templates/generate-simple-html.py")
             if not gen.exists():
-                msg = "generate-html.py not found"
+                msg = "generate-simple-html.py not found"
                 self.log(f"⚠️  {msg}", "WARNING")
                 self.phases['html']['message'] = msg
                 return False
 
-            json_file = self.output_dir / f"pr-{self.pr_number}-data.json"
-            if not json_file.exists():
-                msg = "JSON file not available"
-                self.log(f"⚠️  {msg}", "WARNING")
-                self.phases['html']['message'] = msg
-                return False
+            # Create temp JSON for HTML generation
+            temp_json = self.output_dir / f".temp-pr-{self.pr_number}-html.json"
+            with open(temp_json, 'w', encoding='utf-8') as f:
+                json.dump(self.analysis_data, f, indent=2, default=str)
 
             result = subprocess.run(
-                [sys.executable, str(gen), str(json_file)],
+                [sys.executable, str(gen), str(temp_json)],
                 capture_output=True,
                 text=True,
                 timeout=30
             )
+
+            try:
+                temp_json.unlink()
+            except:
+                pass
 
             html_file = self.output_dir / f"pr-{self.pr_number}-data.html"
 
@@ -553,20 +524,17 @@ class ExecutionOrchestrator:
         # PHASE 3: CLI (SECONDARY) - Generate CLI output third
         cli_ok = self.phase_3_generate_cli()
 
-        # PHASE 4: JSON (SECONDARY - can fail)
-        json_ok = self.phase_4_save_json()
-
-        # PHASE 5: HTML (OPTIONAL - can fail)
-        html_ok = self.phase_5_generate_html()
+        # PHASE 4: HTML (OPTIONAL - can fail)
+        html_ok = self.phase_4_generate_html()
 
         # Print summary
-        self._print_summary(jira_ok, db_ok, cli_ok, json_ok, html_ok)
+        self._print_summary(jira_ok, db_ok, cli_ok, html_ok)
 
         # Return success if database succeeded (JIRA is non-blocking)
         # JIRA failure is logged but doesn't fail the workflow
         return db_ok
 
-    def _print_summary(self, jira_ok: bool, db_ok: bool, cli_ok: bool, json_ok: bool, html_ok: bool):
+    def _print_summary(self, jira_ok: bool, db_ok: bool, cli_ok: bool, html_ok: bool):
         """Print execution summary"""
         self.log("\n" + "=" * 80, "INFO")
         self.log("EXECUTION SUMMARY", "INFO")
@@ -579,12 +547,11 @@ class ExecutionOrchestrator:
         self.log(f"  {'✅' if db_ok else '❌'} Database Update: {self.phases['database']['message']}")
 
         # Secondary phases
-        self.log("\nSECONDARY PHASES (Text Formats):", "INFO")
+        self.log("\nSECONDARY PHASES:", "INFO")
         self.log(f"  {'✅' if cli_ok else '⚠️'} CLI Generate: {self.phases['cli']['message']}")
-        self.log(f"  {'✅' if json_ok else '⚠️'} JSON Save: {self.phases['json']['message']}")
 
         # Optional phases
-        self.log("\nOPTIONAL PHASES (Visual):", "INFO")
+        self.log("\nOPTIONAL PHASES:", "INFO")
         self.log(f"  {'✅' if html_ok else '⚠️'} HTML Generate: {self.phases['html']['message']}")
 
         self.log("\n" + "-" * 80, "INFO")
@@ -595,14 +562,10 @@ class ExecutionOrchestrator:
         else:
             self.log("❌ CRITICAL PHASES FAILED - Workflow should stop", "ERROR")
 
-        if json_ok and html_ok:
-            self.log("✅ Reports fully generated", "SUCCESS")
-        elif json_ok:
-            self.log("⚠️  JSON available but HTML failed", "WARNING")
-        elif html_ok:
-            self.log("⚠️  HTML available but JSON failed", "WARNING")
+        if html_ok:
+            self.log("✅ HTML report generated successfully", "SUCCESS")
         else:
-            self.log("⚠️  JSON and HTML both failed (OK - critical phases succeeded)", "WARNING")
+            self.log("⚠️  HTML report generation failed (non-critical)", "WARNING")
 
         self.log("\n" + "=" * 80 + "\n", "INFO")
 

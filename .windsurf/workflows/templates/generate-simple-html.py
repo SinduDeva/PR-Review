@@ -33,7 +33,7 @@ def escape_html(text):
 def open_html_in_browser(html_file):
     """
     Auto-open HTML file in default browser
-    Supports Windows, macOS, Linux, and various shells
+    Supports Windows, macOS, Linux, Cascade (cloud IDE), and various shells
     """
     try:
         html_path = Path(html_file).resolve()
@@ -44,8 +44,23 @@ def open_html_in_browser(html_file):
 
         system = platform.system()
 
+        # Detect if running in Cascade (cloud IDE)
+        in_cascade = os.environ.get('WINDSURF_WORKSPACE') or os.environ.get('WINDSURF_PROJECT')
+
         try:
-            if system == "Windows":
+            if in_cascade:
+                # Cascade/Cloud IDE: Print file URL for user to open
+                print(f"✅ HTML report generated: {html_path}")
+                print(f"📖 Open in browser: file://{html_path}")
+                # Try to open anyway, will fail gracefully
+                try:
+                    import webbrowser
+                    webbrowser.open(f'file://{html_path}')
+                except:
+                    pass
+                return True
+
+            elif system == "Windows":
                 # Windows: use start or explorer
                 try:
                     os.startfile(str(html_path))

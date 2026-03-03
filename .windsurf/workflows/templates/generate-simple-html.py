@@ -6,12 +6,16 @@ Generates clean HTML reports with:
 - Summary metrics at top
 - Recommendation section
 - Expandable/collapsible files with issues underneath
+- Auto-opens HTML in default browser
 """
 
 import os
 import json
 import sys
+import subprocess
+import platform
 from datetime import datetime
+from pathlib import Path
 
 
 def escape_html(text):
@@ -24,6 +28,68 @@ def escape_html(text):
             .replace('>', '&gt;')
             .replace('"', '&quot;')
             .replace("'", '&#39;'))
+
+
+def open_html_in_browser(html_file):
+    """
+    Auto-open HTML file in default browser
+    Supports Windows, macOS, Linux, and various shells
+    """
+    try:
+        html_path = Path(html_file).resolve()
+
+        if not html_path.exists():
+            print(f"⚠️  HTML file not found: {html_path}")
+            return False
+
+        system = platform.system()
+
+        try:
+            if system == "Windows":
+                # Windows: use start or explorer
+                try:
+                    os.startfile(str(html_path))
+                except Exception:
+                    subprocess.Popen(['explorer', str(html_path)])
+                print(f"✅ Opening in default browser: {html_path}")
+                return True
+
+            elif system == "Darwin":
+                # macOS: use open command
+                subprocess.Popen(['open', str(html_path)])
+                print(f"✅ Opening in default browser: {html_path}")
+                return True
+
+            else:
+                # Linux: try xdg-open, then fallback options
+                xdg_open_exists = subprocess.run(['which', 'xdg-open'], capture_output=True).returncode == 0
+
+                if xdg_open_exists:
+                    subprocess.Popen(['xdg-open', str(html_path)])
+                    print(f"✅ Opening in default browser: {html_path}")
+                    return True
+
+                # Fallback: try common browsers
+                browsers = ['firefox', 'chromium', 'google-chrome', 'brave', 'opera']
+                for browser in browsers:
+                    try:
+                        subprocess.Popen([browser, str(html_path)])
+                        print(f"✅ Opening in {browser}: {html_path}")
+                        return True
+                    except:
+                        pass
+
+                print(f"⚠️  Could not auto-open browser. View manually: {html_path}")
+                return False
+
+        except Exception as e:
+            print(f"⚠️  Could not open browser: {e}")
+            print(f"   View manually: {html_path}")
+            return False
+
+    except Exception as e:
+        print(f"⚠️  Error opening HTML: {e}")
+        return False
 
 
 def generate_html_report(data):
@@ -507,8 +573,17 @@ def generate_html_report(data):
     return html
 
 
-def save_html_report(data, output_file=None):
-    """Save HTML report to file"""
+def save_html_report(data, output_file=None, auto_open=True):
+    """Save HTML report to file and optionally open in browser
+
+    Args:
+        data: Analysis data dictionary
+        output_file: Optional output path
+        auto_open: Whether to auto-open in browser (default: True)
+
+    Returns:
+        output_file path if successful, None otherwise
+    """
     try:
         html = generate_html_report(data)
     except Exception as e:
@@ -529,6 +604,11 @@ def save_html_report(data, output_file=None):
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html)
         print(f"✅ HTML report generated: {output_file}")
+
+        # Auto-open in browser if requested
+        if auto_open:
+            open_html_in_browser(output_file)
+
         return output_file
     except Exception as e:
         print(f"❌ Error saving HTML report: {e}")
@@ -541,7 +621,8 @@ if __name__ == '__main__':
         try:
             with open(json_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            save_html_report(data)
+            # Auto-open HTML report in browser
+            save_html_report(data, auto_open=True)
         except Exception as e:
             print(f"❌ Error: {e}")
             sys.exit(1)

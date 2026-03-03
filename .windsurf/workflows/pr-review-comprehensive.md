@@ -292,8 +292,8 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
    - Line 1337: ### Step 5: Impact Analysis with Layered Dependency Graph
    - Line ~1618: ### Step 6: JIRA Integration - Submit Report ✅ (CORRECTED ORDER)
    - Line ~2114: ### Step 7: Upload Results to Database ✅ (CORRECTED ORDER)
-   - Line ~2280: ### Step 8: Aggregate Findings & Generate Reports ✅ (CORRECTED ORDER)
-   - Line ~2400: ### Step 9: UNLOCK WORKFLOW FILE
+   - Line ~2280: ### Step 6: Aggregate Findings & Generate Reports ✅ (CORRECTED ORDER)
+   - Line ~2400: ### Step 7: UNLOCK WORKFLOW FILE
 
    VALIDATION: Count must equal exactly 10 ✅
 
@@ -322,8 +322,8 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
    - #### 7b: Upload Results to Database
 
    Step 8 sub-steps (3 total): ✅ CORRECTED ORDER
-   - #### 8a: Consolidate All Analysis Results
-   - #### 8b: Generate JSON Data File for Reports
+   - #### 6a: Consolidate All Analysis Results
+   - #### 6b: Generate JSON Data File for Reports
    - #### 8c: Generate HTML Report and CLI Output
 
    VALIDATION: Count must equal exactly 14 ✅
@@ -1666,7 +1666,7 @@ For each changed file:
 
 ---
 
-### Step 8: Aggregate Findings & Generate Reports
+### Step 6: Aggregate Findings & Generate Reports
 
 **⚠️ CRITICAL REQUIREMENT**: Steps 0-5 must complete FULLY before Step 8 starts
 
@@ -1675,7 +1675,7 @@ Do NOT skip Steps 0-5. All analysis must be complete in-memory before reports ca
 
 **Goal**: Create comprehensive, actionable reports with all analysis data
 
-#### 8a: Consolidate All Analysis Results
+#### 6a: Consolidate All Analysis Results
 
 ```
 Merge findings from:
@@ -1694,7 +1694,7 @@ Deduplicate and prioritize by:
 4. LOW - Style, documentation
 ```
 
-#### 8b: Build Analysis Data in Memory & Execute in Priority Order
+#### 6b: Build Analysis Data in Memory & Execute in Priority Order
 
 **🔴 CRITICAL - ZERO JSON DEPENDENCY FOR CORE FUNCTIONALITY**
 
@@ -2921,7 +2921,7 @@ Step 9: All critical outputs exist, unlock workflow
 
 ---
 
-### Step 9: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE
+### Step 7: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE
 
 **Goal**: Release read-only lock on workflow file after execution completes (success or failure)
 

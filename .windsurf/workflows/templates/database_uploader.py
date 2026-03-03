@@ -4,6 +4,21 @@ Database Uploader - Uploads PR review results to MySQL
 
 Persists all workflow results to pr_review_audit database for audit trail,
 historical tracking, and reporting across multiple PR reviews.
+
+SKIP MODE:
+  Use --skip-if-missing flag to gracefully skip database upload if JSON file is missing.
+  This allows development/testing without database setup.
+
+  Usage:
+    python database_uploader.py <json_file> --skip-if-missing
+
+  When JSON is missing:
+    - With --skip-if-missing: Exits cleanly (exit 0), no error
+    - Without --skip-if-missing: Creates fallback data and uploads to database
+
+CORE LOGIC:
+  Database upload logic remains unchanged. Skip mechanism only affects entry point behavior.
+  All actual upload functions (_insert_run, _insert_step, etc.) are unmodified.
 """
 
 import json
@@ -313,20 +328,35 @@ def _create_fallback_data(json_file: str) -> Dict[str, Any]:
 def main():
     """Main entry point for database uploader"""
     if len(sys.argv) < 2:
-        print("Usage: python database_uploader.py <json_file> [--host localhost] [--db pr_review_audit]")
+        print("Usage: python database_uploader.py <json_file> [--host localhost] [--db pr_review_audit] [--skip-if-missing]")
         sys.exit(1)
 
     json_file = sys.argv[1]
 
     # Parse arguments
     kwargs = {'host': 'localhost', 'db': 'pr_review_audit'}
+    skip_if_missing = False
+
     for i in range(2, len(sys.argv), 2):
         if sys.argv[i] == '--host' and i + 1 < len(sys.argv):
             kwargs['host'] = sys.argv[i + 1]
         elif sys.argv[i] == '--db' and i + 1 < len(sys.argv):
             kwargs['db'] = sys.argv[i + 1]
+        elif sys.argv[i] == '--skip-if-missing':
+            skip_if_missing = True
 
     try:
+        # Check if JSON file exists
+        import os
+        if not os.path.exists(json_file):
+            if skip_if_missing:
+                print(f"⏭️  Skipping database upload (JSON file not found, --skip-if-missing enabled)")
+                print(f"   JSON file: {json_file}")
+                print(f"   This is normal during development/testing")
+                sys.exit(0)
+            else:
+                print(f"⚠️  JSON file not found: {json_file}")
+
         # Load JSON data with fallback
         json_data = None
         try:
@@ -334,6 +364,9 @@ def main():
                 json_data = json.load(f)
             print(f"✅ Loaded JSON data from: {json_file}")
         except FileNotFoundError:
+            if skip_if_missing:
+                print(f"⏭️  Skipping database upload (JSON file not found)")
+                sys.exit(0)
             print(f"⚠️  JSON file not found: {json_file}")
             json_data = _create_fallback_data(json_file)
         except json.JSONDecodeError:

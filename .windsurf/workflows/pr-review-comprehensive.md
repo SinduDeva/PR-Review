@@ -2299,167 +2299,455 @@ print("✅ Analysis complete - proceeding with report generation")
 **Actions** (execute in THIS exact order — do NOT skip):
 
 ```
-STEP 1: VERIFY ANALYSIS RESULTS ARE AVAILABLE (8b-CHECK)
-========================================================
+STEP 1: WAIT FOR & VALIDATE ANALYSIS COMPLETION (8b-GATE) - BLOCKS IF INCOMPLETE
+==================================================================================
 
-Verify that steps 0-5 completed and captured analysis results:
-- Check: PR number was detected
-- Check: PR author was identified
-- Check: Files were analyzed
-- Check: Code findings were generated
-- Check: Impact analysis was completed
+CRITICAL: Ensure Steps 4-5 complete BEFORE generating any reports.
 
-Output:
-- ✅ "Analysis complete - proceeding with report generation"
-- ⚠️ "Analysis incomplete - generating reports with available data"
+**WAIT FOR ANALYSIS COMPLETION**:
 
-Note: Reports will be generated regardless, using available data.
-If analysis is missing, reports will note that certain sections are incomplete.
+Before validation, check that:
+- [ ] Step 4 (Code Quality Analysis) has COMPLETED (status = COMPLETE)
+- [ ] Step 5 (Impact Analysis) has COMPLETED (status = COMPLETE)
+
+If either step is still running:
+  → Wait for completion (poll every 5 seconds, max 5 minutes timeout)
+  → Display: "⏳ Waiting for Step 4-5 analysis to complete..."
+  → Count down: "⏳ Still analyzing... (2 minutes remaining)"
+
+If timeout reached without completion:
+  → Print: "❌ ANALYSIS TIMEOUT - Steps 4-5 did not complete within 5 minutes"
+  → Print: "STOPPING report generation"
+  → STOP workflow (do not proceed to report generation)
+  → Output: "Please check workflow logs and re-run Step 8 after Step 4-5 complete"
+
+**VALIDATION CHECKLIST** (ALL must pass after analysis completes):
+
+✅ METADATA REQUIRED:
+   - [ ] PR number detected (from Step 0)
+   - [ ] PR title captured (from Step 1)
+   - [ ] PR author identified (from Step 1)
+   - [ ] Reviewer assigned (defaults to "Automated Review System")
+
+✅ SUMMARY REQUIRED (from Step 2-3):
+   - [ ] Files changed count
+   - [ ] Files validated count
+   - [ ] Files excluded count (test/docs)
+   - [ ] Lines added count
+   - [ ] Lines deleted count
+   - [ ] Issue counts by severity (Critical, High, Medium, Low)
+
+✅ CODE ANALYSIS REQUIRED (from Step 4):
+   - [ ] Findings array exists (can be empty if no issues)
+   - [ ] Each finding has: severity, file, line, type, description, impact, suggestion
+
+✅ SPRING BOOT VALIDATION REQUIRED (from Step 4):
+   - [ ] Architecture score (0-10) and status
+   - [ ] Security score (0-10) and status
+   - [ ] Performance score (0-10) and status
+   - [ ] Transaction Management score (0-10) and status
+
+✅ TEST COVERAGE REQUIRED (from Step 4):
+   - [ ] Overall coverage percentage
+   - [ ] Coverage by type (Unit, Integration, E2E)
+   - [ ] Coverage gaps identified
+   - [ ] Missing tests listed
+
+✅ API CHANGES REQUIRED (from Step 4):
+   - [ ] API changes array exists (can be empty)
+   - [ ] Breaking changes identified
+   - [ ] Non-breaking changes identified
+   - [ ] New endpoints identified
+
+✅ IMPACT ANALYSIS REQUIRED (from Step 5):
+   - [ ] Risk level assessment (HIGH/MEDIUM/LOW)
+   - [ ] Affected APIs list
+   - [ ] Affected components list
+   - [ ] Dependency impact summary
+   - [ ] Transitive impact analysis
+
+✅ RECOMMENDATIONS REQUIRED (from Step 5):
+   - [ ] Overall decision (APPROVE/REQUEST_CHANGES/BLOCK)
+   - [ ] Reason/justification provided
+   - [ ] Must-fix items listed (if applicable)
+   - [ ] Should-fix items listed (if applicable)
+   - [ ] Action items provided
+
+✅ POSITIVE OBSERVATIONS (from Step 5):
+   - [ ] Strengths identified
+   - [ ] Best practices noted
+   - [ ] Good patterns recognized
+
+✅ AI SUMMARY (from Step 5):
+   - [ ] Overall summary provided
+   - [ ] Key takeaways listed
+
+**IF ALL VALIDATIONS PASS:**
+   Print:
+   ```
+   ═════════════════════════════════════════════════════════════
+   ✅ ANALYSIS COMPLETE
+   ═════════════════════════════════════════════════════════════
+   All required analysis sections from Steps 4-5 validated:
+   ✅ Metadata and Summary
+   ✅ Code Analysis Findings
+   ✅ Spring Boot Validation
+   ✅ Test Coverage
+   ✅ API Changes
+   ✅ Impact Analysis
+   ✅ Recommendations
+   ✅ Positive Observations
+   ✅ AI Summary
+
+   Proceeding to report generation...
+   ```
+
+   Then: Proceed to report generation (STEP 2 onwards)
+   Generate: JIRA comment (STEP 2)
+   Generate: HTML report (STEP 3)
+   Generate: CLI summary (STEP 4)
+   All reports generated with GUARANTEED identical format
+
+**IF ANY VALIDATION FAILS:**
+   Print:
+   ```
+   ═════════════════════════════════════════════════════════════
+   ❌ ANALYSIS INCOMPLETE
+   ═════════════════════════════════════════════════════════════
+   Cannot generate reports - missing required analysis sections:
+
+   [List all missing fields]
+
+   Steps 4-5 did not complete full analysis.
+
+   ACTION REQUIRED:
+   1. Check that Step 4 completed (Code Quality Analysis)
+   2. Check that Step 5 completed (Impact Analysis)
+   3. Verify all required fields are populated
+   4. Run Step 8 again after Steps 4-5 complete
+
+   Report generation BLOCKED until analysis is complete.
+   ```
+
+   Then:
+   - DO NOT GENERATE REPORTS
+   - STOP workflow execution (do not proceed to STEP 2, 3, 4)
+   - WAIT for Steps 4-5 to complete
+   - Manual re-run of Step 8 will retry validation
 
 
 STEP 2: GENERATE JIRA COMMENT (CRITICAL - MUST COMPLETE)
 =========================================================
 
-Generate JIRA comment from analysis results via prompt:
+Generate JIRA comment with IDENTICAL structure to HTML and CLI reports:
 
 ```
-Based on all analysis from Steps 0-5, generate a JIRA comment with:
+Generate plain-text JIRA comment with ALL sections below (in this order):
 
-HEADER:
-- PR #{pr_number}: {pr_title}
-- Author: {author}
-- Branch: {source_branch} → {target_branch}
+1. HEADER / METADATA
+   - PR #{pr_number}: {pr_title}
+   - Author: {author}
+   - Reviewer: {reviewer}
+   - Branch: {source_branch} → {target_branch}
+   - Review Date: {review_date}
+   - Execution Time: {execution_time}
 
-SUMMARY:
-- Files analyzed: {files_validated}
-- Issues by severity: {critical} Critical, {high} High, {medium} Medium, {low} Low
+2. SUMMARY METRICS
+   - Files Changed: {files_changed}
+   - Files Validated: {files_validated}
+   - Files Excluded: {files_excluded} (test/docs)
+   - Lines Added: {lines_added}
+   - Lines Deleted: {lines_deleted}
+   - Issues: {critical} Critical, {high} High, {medium} Medium, {low} Low
 
-CODE FINDINGS:
-- List all findings grouped by severity (CRITICAL first, then HIGH, MEDIUM, LOW)
-- For each finding: Title, File, Line, Type, Description, Impact, Fix
+3. CODE ANALYSIS FINDINGS
+   Grouped by Severity (CRITICAL → HIGH → MEDIUM → LOW):
+   For each finding:
+   - [SEVERITY] Title / File:Line / Type / Description / Impact / Fix
 
-SPRING BOOT VALIDATION:
-- Architecture score and status
-- Security score and status
-- Performance score and status
-- Transaction Management score and status
+4. SPRING BOOT VALIDATION
+   - Architecture: {score}/10 ({status})
+   - Security: {score}/10 ({status})
+   - Performance: {score}/10 ({status})
+   - Transaction Management: {score}/10 ({status})
 
-TEST COVERAGE:
-- Overall coverage percentage
-- Coverage by type (Unit, Integration)
-- Coverage gaps and missing tests
+5. TEST COVERAGE
+   - Overall Coverage: {percentage}
+   - Unit Tests: {percentage}
+   - Integration Tests: {percentage}
+   - Coverage Gaps: [list]
+   - Missing Tests: [list]
 
-API CHANGES:
-- List breaking changes
-- List non-breaking changes
-- List new endpoints
+6. API CHANGES
+   - Total Changes: {count}
+   - Breaking Changes: {count}
+   - Non-Breaking Changes: {count}
+   - New Endpoints: {count}
 
-IMPACT ANALYSIS:
-- Risk level (HIGH/MEDIUM/LOW)
-- Affected APIs
-- Affected components
-- Dependency impact summary
+7. IMPACT ANALYSIS
+   - Risk Level: {HIGH|MEDIUM|LOW}
+   - Affected APIs: [list]
+   - Affected Components: [list]
+   - Dependency Impact: [summary]
+   - Transitive Impact: [summary]
 
-RECOMMENDATIONS:
-- Overall decision: APPROVE / REQUEST_CHANGES / BLOCK
-- Reason/justification
-- Must-fix items
-- Should-fix items
-- Action items
+8. RECOMMENDATIONS
+   - Decision: {APPROVE|REQUEST_CHANGES|BLOCK}
+   - Reason: [justification]
+   - Must-Fix Items: [list]
+   - Should-Fix Items: [list]
+   - Action Items: [list]
 
-POSITIVE OBSERVATIONS:
-- PR strengths
-- Best practices followed
-- Good patterns used
+9. POSITIVE OBSERVATIONS
+   - Strengths: [list]
+   - Best Practices: [list]
+   - Good Patterns: [list]
 
-AI SUMMARY:
-- Overall summary of changes and impacts
-- Key takeaways
+10. AI SUMMARY
+    - Overall Summary: [paragraph]
+    - Key Takeaways: [list]
 
-Output as plain text to: .ai-review/pr-{pr_number}-jira-comment.txt
+11. EXECUTION STATUS
+    - Validation Results: Passed/Failed
+    - Warnings: [list if any]
+    - Steps Completed: 0, 1, 2, 3, 4, 5
+
+Save as plain text to: .ai-review/pr-{pr_number}-jira-comment.txt
+
+Format requirements:
+- Use clear section headers (1. HEADER, 2. SUMMARY, etc.)
+- No special Unicode (except spaces/newlines)
+- Monospace-friendly formatting
+- No HTML tags
 ```
 
-Then post to JIRA (non-blocking if fails).
+Then post to JIRA (non-blocking if posting fails).
 
-✅ MUST COMPLETE - Team sees analysis via JIRA
+✅ MUST COMPLETE - Team sees complete analysis via JIRA
 
 
 STEP 3: GENERATE & AUTO-OPEN HTML REPORT (CRITICAL - MUST COMPLETE)
 ====================================================================
 
-Generate interactive HTML report from analysis via prompt:
+Generate interactive HTML report with IDENTICAL structure to JIRA and CLI:
 
 ```
-Generate professional HTML report from analysis with:
+Generate professional HTML from analysis with ALL sections (in this order):
 
-HTML STRUCTURE:
-1. Header section: PR title, author, reviewer, date, metrics
-2. Summary metrics: Files analyzed, issues by severity count
-3. Recommendation box: Decision (APPROVE/REQUEST_CHANGES/BLOCK) with color coding
-4. Code Review section: Findings grouped by file, expandable/collapsible
-   - Each file is collapsible
-   - Shows all issues related to that file when expanded
-   - Issues colored by severity (red=critical, orange=high, yellow=medium, blue=low)
-5. Spring Boot Validation: Score table with status for each category
-6. Test Coverage: Coverage percentages and gaps
-7. API Changes: Breaking/non-breaking/new endpoint counts
-8. Impact Analysis: Risk level, affected APIs, affected components
-9. Positive Observations: Strengths and best practices
-10. AI Summary: Overall summary and key takeaways
-11. Execution Status: Validation results and warnings
+1. HEADER / METADATA
+   Display in colored header:
+   - PR #{pr_number}: {pr_title}
+   - Author: {author}
+   - Reviewer: {reviewer}
+   - Branch: {source_branch} → {target_branch}
+   - Review Date: {review_date}
+   - Execution Time: {execution_time}
 
-CSS:
-- Professional styling with gradients
-- Responsive design (mobile-friendly)
-- Severity badge colors: #d32f2f (critical), #ff6f00 (high), #fbc02d (medium), #1976d2 (low)
-- Collapsible sections with smooth transitions
+2. SUMMARY METRICS
+   Display as metric boxes in grid:
+   - Files Changed: {files_changed}
+   - Files Validated: {files_validated}
+   - Files Excluded: {files_excluded}
+   - Lines Added: {lines_added}
+   - Lines Deleted: {lines_deleted}
+   - Critical Issues: {critical} (red badge)
+   - High Issues: {high} (orange badge)
+   - Medium Issues: {medium} (yellow badge)
+   - Low Issues: {low} (blue badge)
 
-JavaScript:
-- Click file header to toggle content visibility
-- Smooth animations for expand/collapse
-- No external dependencies
+3. CODE ANALYSIS FINDINGS
+   Expandable file sections:
+   - Each changed file is a collapsible section
+   - When expanded, shows all issues in that file
+   - Issues grouped by severity within each file (CRITICAL → HIGH → MEDIUM → LOW)
+   - Each issue shows: Title, Type, Line, Description, Impact, Fix
+   - Color-coded severity badges (red/orange/yellow/blue)
+
+4. SPRING BOOT VALIDATION
+   Table format showing:
+   - Architecture: {score}/10 - {status} - {color badge}
+   - Security: {score}/10 - {status} - {color badge}
+   - Performance: {score}/10 - {status} - {color badge}
+   - Transaction Management: {score}/10 - {status} - {color badge}
+
+5. TEST COVERAGE
+   Table format showing:
+   - Overall Coverage: {percentage}
+   - Unit Tests: {percentage}
+   - Integration Tests: {percentage}
+   - E2E Tests: {percentage}
+   Coverage gaps section (if any)
+   Missing tests section (if any)
+
+6. API CHANGES
+   Section showing:
+   - Total Changes: {count}
+   - Breaking Changes: {count} (red)
+   - Non-Breaking Changes: {count} (orange)
+   - New Endpoints: {count} (green)
+   Detailed list of each API change if available
+
+7. IMPACT ANALYSIS
+   Section showing:
+   - Risk Level: {HIGH|MEDIUM|LOW} (color-coded)
+   - Affected APIs: {list}
+   - Affected Components: {list}
+   - Dependency Impact: {summary paragraph}
+   - Transitive Impact: {summary paragraph}
+
+8. RECOMMENDATIONS
+   Colored box (green for APPROVE, orange for REQUEST_CHANGES, red for BLOCK):
+   - Decision: {APPROVE|REQUEST_CHANGES|BLOCK}
+   - Reason: {justification paragraph}
+   - Must-Fix Items: {bulleted list}
+   - Should-Fix Items: {bulleted list}
+   - Action Items: {bulleted list}
+
+9. POSITIVE OBSERVATIONS
+   Green section showing:
+   - Strengths: {bulleted list}
+   - Best Practices: {bulleted list}
+   - Good Patterns: {bulleted list}
+
+10. AI SUMMARY
+    Section showing:
+    - Overall Summary: {paragraph}
+    - Key Takeaways: {bulleted list}
+
+11. EXECUTION STATUS
+    Gray footer showing:
+    - Validation Results: Passed/Failed
+    - Warnings: {list if any}
+    - Steps Completed: ✅ 0, 1, 2, 3, 4, 5
+    - Generation Timestamp: {UTC timestamp}
+
+HTML/CSS/JS Requirements:
+- Professional gradient header
+- Responsive grid layout
+- Expandable/collapsible file sections (click to toggle)
+- Color-coded severity badges
+- Mobile-friendly design
+- No external dependencies (CSS/JS embedded)
+- Proper HTML entity escaping (prevent XSS)
 
 Output to: .ai-review/pr-{pr_number}-data.html
 
-Then auto-open in browser:
-- Windows: Use start command or explorer
-- macOS: Use open command
-- Linux: Use xdg-open or available browser
-- Cascade IDE: Print file:// URL and attempt webbrowser.open()
+Auto-open in browser:
+- Windows: start command
+- macOS: open command
+- Linux: xdg-open or available browser
+- Cascade IDE: Print file:// URL for manual opening
 ```
 
-✅ MUST COMPLETE - User sees detailed report in browser
+✅ MUST COMPLETE - User sees complete interactive report in browser
 
 
 STEP 4: GENERATE CLI SUMMARY (SECONDARY - Non-blocking)
 =========================================================
 
-Print CLI summary to console via prompt:
+Print terminal-friendly summary with IDENTICAL structure to JIRA and HTML:
 
 ```
-Generate terminal-friendly summary with:
+Generate ANSI-colored console output with ALL sections (in this order):
 
-HEADER:
-- PR #{pr_number}: {pr_title}
-- Metrics: {files_validated} files, {critical}/{high}/{medium}/{low} issues
+1. HEADER / METADATA
+   ═══════════════════════════════════════════════════════
+   PR #{pr_number}: {pr_title}
+   ═══════════════════════════════════════════════════════
+   Author: {author}
+   Reviewer: {reviewer}
+   Branch: {source_branch} → {target_branch}
+   Date: {review_date}
+   Time: {execution_time}
 
-CRITICAL ISSUES (if any):
-- List top 3 critical findings
-- Format: [FILE:LINE] Title - Description
+2. SUMMARY METRICS
+   Files Changed: {files_changed} | Validated: {files_validated} | Excluded: {files_excluded}
+   Lines: +{lines_added} -{lines_deleted}
+   Issues: 🔴 {critical} Critical | 🟠 {high} High | 🟡 {medium} Medium | 🔵 {low} Low
 
-RECOMMENDATION:
-- Decision: {APPROVE|REQUEST_CHANGES|BLOCK}
-- Reason: {justification}
+3. CODE ANALYSIS FINDINGS
+   [CRITICAL ISSUES] (if any)
+   - [FILE:LINE] Title (Type) - Description
+   - [FILE:LINE] Title (Type) - Description
 
-NEXT STEPS:
-- Must-fix items
-- Should-fix items
+   [HIGH ISSUES] (if any)
+   - [FILE:LINE] Title (Type) - Description
+   - [FILE:LINE] Title (Type) - Description
+
+   [MEDIUM ISSUES] (if any) - show count, e.g. "5 medium issues (show first 3)"
+
+   [LOW ISSUES] (if any) - show count, e.g. "8 low issues"
+
+4. SPRING BOOT VALIDATION
+   ┌─────────────────────┬───────┬─────────┐
+   │ Category            │ Score │ Status  │
+   ├─────────────────────┼───────┼─────────┤
+   │ Architecture        │ {sc}/10 │ {st}   │
+   │ Security            │ {sc}/10 │ {st}   │
+   │ Performance         │ {sc}/10 │ {st}   │
+   │ Transaction Mgmt    │ {sc}/10 │ {st}   │
+   └─────────────────────┴───────┴─────────┘
+
+5. TEST COVERAGE
+   Overall: {percentage} | Unit: {percentage} | Integration: {percentage}
+   Coverage Gaps: {list or "None"}
+   Missing Tests: {list or "None"}
+
+6. API CHANGES
+   Total: {count} | Breaking: {count} 🔴 | Non-Breaking: {count} 🟠 | New: {count} 🟢
+
+7. IMPACT ANALYSIS
+   Risk Level: {HIGH 🔴 | MEDIUM 🟠 | LOW 🟢}
+   Affected APIs: {list or "None"}
+   Affected Components: {list or "None"}
+   Dependency Impact: {summary}
+
+8. RECOMMENDATIONS
+   Decision: {APPROVE ✅ | REQUEST_CHANGES ⚠️ | BLOCK ❌}
+   Reason: {justification}
+
+   Must-Fix:
+   - {item}
+   - {item}
+
+   Should-Fix:
+   - {item}
+   - {item}
+
+9. POSITIVE OBSERVATIONS
+   Strengths: {list}
+   Best Practices: {list}
+   Good Patterns: {list}
+
+10. AI SUMMARY
+    {overall summary paragraph}
+
+    Key Takeaways:
+    - {item}
+    - {item}
+
+11. EXECUTION STATUS
+    ✅ Validation: Passed
+    Generated: {timestamp}
+    Output Files:
+    - .ai-review/pr-{pr_number}-jira-comment.txt
+    - .ai-review/pr-{pr_number}-data.html
+    - .ai-review/pr-{pr_number}-cli-output.txt
+
+    View HTML report: .ai-review/pr-{pr_number}-data.html
+
+Format requirements:
+- Use ANSI colors: Red (#d32f2f), Orange (#ff6f00), Yellow (#fbc02d), Blue (#1976d2)
+- Use emoji for visual clarity: 🔴 🟠 🟡 🔵 ✅ ⚠️ ❌
+- Use ASCII tables for structured data
+- Fixed-width font friendly
+- Clear section separators (═══ or ───)
+```
 
 Output to: .ai-review/pr-{pr_number}-cli-output.txt
-Also print to console for immediate feedback.
-```
+Also print to stdout for immediate terminal feedback.
 
-✅ OPTIONAL - User gets terminal feedback (can fail without blocking)
+✅ SECONDARY - Terminal feedback (can fail without blocking workflow)
 
 
 FINAL RESULT:

@@ -2290,28 +2290,128 @@ print("✅ Analysis complete - proceeding with report generation")
 
 **IMPORTANT**: Do NOT put example/dummy data in the JSON. Every value must come from the actual analysis performed in Steps 0-5.
 
-#### 8c: Execute Reports in Priority Order (JIRA → HTML → CLI → JSON → DB)
+#### 8c: Execute Reports in Priority Order (Validate → JIRA → HTML → CLI)
 
 **⚠️ PREREQUISITE**: Analysis validation gate (8b-GATE) must pass before proceeding!
 
-**All reports follow consistent format** (see REPORT_FORMAT_GUIDE.html):
-- ✅ Same structure: metadata, summary, analysis, recommendations
-- ✅ No Cascade/Windsurf branding
-- ✅ PR number and reviewer in all reports
-- ✅ Consistent field naming and organization
+**EXECUTION**: Call ExecutionOrchestrator with aggregated analysis data
 
 **Actions** (execute in THIS exact order — do NOT skip):
 
+```python
+from execution_orchestrator import ExecutionOrchestrator
+
+# EXECUTION:
+try:
+    # Aggregate all analysis data from Steps 0-7
+    aggregated_analysis = {
+        'metadata': review_data.get('metadata', {}),
+        'summary': review_data.get('summary', {}),
+        'pagination_metadata': review_data.get('pagination_metadata', {}),
+        'findings': review_data.get('findings', []),
+        'files_reviewed': review_data.get('files_reviewed', []),
+        'files_skipped': review_data.get('files_skipped', []),
+        'spring_boot_validation': review_data.get('spring_boot_validation', {}),
+        'test_coverage': review_data.get('test_coverage', {}),
+        'api_changes': review_data.get('api_changes', []),
+        'impact_analysis': review_data.get('impact_analysis', {}),
+        'overall_recommendation': review_data.get('overall_recommendation', {}),
+        'recommendations': review_data.get('recommendations', []),
+        'positive_observations': review_data.get('positive_observations', []),
+        'ai_summary': review_data.get('ai_summary', ''),
+        'execution_status': execution_status
+    }
+
+    # Get PR number for orchestrator
+    pr_number = review_data.get('metadata', {}).get('pr_number')
+
+    # Create orchestrator and execute (in-memory data only, no files)
+    print("\n" + "=" * 80)
+    print("EXECUTING REPORTS: Validate → JIRA → HTML → CLI")
+    print("=" * 80)
+
+    orchestrator = ExecutionOrchestrator(
+        analysis_data=aggregated_analysis,
+        pr_number=pr_number,
+        verbose=True
+    )
+
+    # Execute report generation in correct order
+    success = orchestrator.execute()
+
+    # Update execution status with orchestrator results
+    execution_status['steps']['step_8_reports'] = {
+        'status': 'success' if success else 'completed_with_warnings',
+        'validation': orchestrator.phases['validation']['message'],
+        'jira': orchestrator.phases['jira']['message'],
+        'html': orchestrator.phases['html']['message'],
+        'cli': orchestrator.phases['cli']['message']
+    }
+
+    if not success:
+        print("\n⚠️ WARNING: Some report phases failed - check output above")
+        print("   But critical outputs (JIRA and HTML) should exist")
+        # Continue workflow - don't block
+
+except Exception as e:
+    print(f"\n❌ ERROR in report generation: {e}")
+    import traceback
+    traceback.print_exc()
+    execution_status['steps']['step_8_reports'] = {
+        'status': 'failed_with_fallback',
+        'error': str(e)
+    }
+    # Continue workflow - don't block
+
+# JSON and Database are now OPTIONAL and NOT NEEDED
+# ExecutionOrchestrator handles all critical report generation
+# (JIRA, HTML auto-open, CLI summary)
 ```
-⚠️ CRITICAL WORKFLOW ORDER: Execute by priority, JIRA first, DB last
-⚠️ PREREQUISITE: Analysis validation passed (8b-GATE)
-JSON is NOT required. Database update only happens if JSON saved successfully.
 
-1. Ensure .ai-review/ directory exists:
-   mkdir -p .ai-review   (or New-Item -ItemType Directory -Force .ai-review on Windows)
+---
 
-2. Archive Previous Run (if re-running):
-   python .windsurf/workflows/templates/report_manager.py {pr_number}
+**EXECUTION ORDER GUARANTEED BY ExecutionOrchestrator**:
+
+```
+1. Phase 0: VALIDATE ANALYSIS COMPLETE (8b-GATE)
+   - Check all required fields present
+   - Block reports if validation fails
+   - Print validation report
+
+2. Phase 1: POST JIRA COMMENT (CRITICAL)
+   - Format analysis as plain text
+   - Save to .ai-review/pr-{pr_number}-jira-comment.txt
+   - Attempt MCP post (non-blocking if fails)
+   - ✅ MUST complete with complete analysis
+
+3. Phase 2: GENERATE & AUTO-OPEN HTML REPORT (CRITICAL)
+   - Generate HTML from in-memory data
+   - Auto-open in default browser
+   - Save to .ai-review/pr-{pr_number}-data.html
+   - ✅ MUST complete and user must see it
+
+4. Phase 3: GENERATE CLI SUMMARY (SECONDARY)
+   - Print summary to stdout
+   - Save to .ai-review/pr-{pr_number}-cli-output.txt
+   - Non-blocking if fails
+
+RESULT: Team has JIRA, user has HTML opened, CLI summary printed
+```
+
+---
+
+**REMOVED (NOT NEEDED)** ❌:
+- JSON file creation (reports work from in-memory data)
+- Database upload (can add later)
+- Individual report generators (ExecutionOrchestrator handles all)
+
+---
+
+**ARCHIVE Previous Run (if re-running - OPTIONAL)**:
+
+```bash
+# This is optional - if you want to keep run history
+python .windsurf/workflows/templates/report_manager.py {pr_number}
 
    This will:
    - Move old reports to .ai-review/pr-{pr_number}-run-1/ (if second run)

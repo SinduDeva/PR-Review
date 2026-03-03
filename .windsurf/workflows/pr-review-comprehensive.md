@@ -183,17 +183,53 @@ REPORT (Always):
 
 | Step | Primary | Fallback | Skip Behavior |
 |------|---------|----------|---------------|
-| 0 | getPullRequests(OPEN filter) | getPullRequest(pr_number) | Exit with diagnostics |
+| 0 | getPullRequests(OPEN filter) | getPullRequest(pr_number) | **ABORT** - Unlock & Exit |
 | 1 | getPullRequest() + comments | Retry with timeout increase | Continue with empty data |
 | 2 | git diff --numstat | BitBucket API diffstat | Use empty file list |
 | 3 | Code quality analysis | Retry with timeout | Use empty findings |
 | 4 | Spring Boot validation | Retry with timeout | Use empty validation |
 | 5 | Impact analysis | Retry with timeout | Use empty graph |
-| 6 | Python HTML generation | Basic HTML fallback | Minimal text report |
-| 7 | JIRA posting | Log for manual posting | Continue (optional step) |
+| 6 | JIRA posting | Log for manual posting | Continue (optional) |
+| 7 | HTML generation | Basic HTML fallback | Minimal text report |
+| 8 | CLI output | Inline summary | Display empty summary |
+| **8b** | **JSON save** | **Skip gracefully** | **Continue to DB** |
+| **8c** | **Database update** | **Skip gracefully** | **Workflow completes** |
+
+**Abort vs Skip Strategy**:
+
+**⚠️ ABORT WORKFLOW** (Only if PR not found):
+- Step 0: PR detection fails completely
+- Action: Unlock workflow, exit with diagnostics
+- Result: No analysis, no reports, workflow terminates
+- Reason: Cannot analyze PR without valid PR number
+
+**✅ SKIP STEP & CONTINUE** (All other failures):
+- Step 1-8: Any step fails
+- Action: Log error, set data to empty/null, continue to next step
+- Result: Workflow completes with partial data
+- Reason: User-facing outputs (JIRA, HTML, CLI) already exist
+
+**Graceful Degradation Examples**:
+```
+JSON save fails   → Skip JSON save, continue to DB upload
+                   → Workflow completes successfully
+                   → HTML/JIRA/CLI all exist
+
+Database upload fails → Skip DB upload, end workflow
+                      → All reports still exist
+                      → Workflow completes successfully
+
+Step 1-8 failures → Log error, continue to next step
+                 → Workflow completes with what exists
+                 → HTML report includes error details
+```
 
 **Critical Behavior**:
 - ✅ HTML report ALWAYS generated (primary or fallback method)
+- ✅ JIRA comment ALWAYS posted (if Step 6 completes)
+- ✅ CLI summary ALWAYS printed (if Step 8a completes)
+- ✅ Workflow NEVER stops except for Step 0 PR not found
+- ✅ Unlock always happens (try-finally ensures it)
 - ✅ All errors shown in "Execution Status & Issues" section of report
 - ✅ Workflow NEVER aborts due to analysis step failures (only Step 0 can stop)
 - ✅ JIRA integration NEVER blocks workflow (optional step)
@@ -409,7 +445,7 @@ FALLBACK METHOD (if Primary fails):
        error: "Unable to auto-detect PR. Primary and fallback methods failed."
 
 FAILURE HANDLING (if both methods fail):
-6. Output diagnostics and exit gracefully:
+6. Output diagnostics and ABORT WORKFLOW:
    Output:
    ```
    ❌ NO PR FOUND - WORKFLOW ABORTED
@@ -425,11 +461,22 @@ FAILURE HANDLING (if both methods fail):
    2. Ensure PR is in OPEN status (not draft/closed)
    3. Run workflow again once PR exists
 
-   Note: This is a terminal condition - cannot proceed without valid PR
+   Note: This is a TERMINAL CONDITION - cannot proceed without valid PR
    ```
 
-   Exit workflow without generating HTML (no PR data to analyze)
+7. **UNLOCK WORKFLOW AND ABORT**:
+   ```bash
+   # Release lock before aborting
+   python .windsurf/workflows/templates/workflow_lock.py \
+     .windsurf/workflows/pr-review-comprehensive.md \
+     unlockfile
+
+   # Abort with error code
+   exit 1
+   ```
+
    Set execution_status.overall_status = "aborted_no_pr_found"
+   Workflow terminates - no steps execute after PR not found
 
 SUCCESS VALIDATION:
 7. Validate extracted PR before proceeding:
@@ -2407,13 +2454,14 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    {complete analysis_data object}
    EOF
 
-   # Check success
+   # Check success (non-blocking)
    if [ $? -eq 0 ]; then
        json_saved = true
        echo "✅ JSON saved successfully"
    else
        json_saved = false
-       echo "⚠️ JSON save failed - but all reports already exist"
+       echo "⚠️ JSON save failed - continuing (all reports already exist)"
+       # IMPORTANT: Do NOT stop workflow - continue to next step
    fi
    ```
 
@@ -2423,11 +2471,13 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    - ✅ CLI summary already printed (user has feedback)
    - ✅ If JSON save fails: Zero impact on user-facing outputs
    - ✅ Cascade file creation issues don't block anything
+   - ✅ All critical deliverables already completed
 
-   **Error Handling**:
-   - If json_saver.py fails: Log warning, continue
-   - Set flag: json_saved = (exit code == 0)
-   - Workflow proceeds to optional database update
+   **Error Handling** (graceful degradation):
+   - If json_saver.py fails: Log warning, set json_saved=false
+   - ❌ Do NOT stop workflow
+   - ✅ Continue to database upload step (will gracefully skip)
+   - Result: All user-facing outputs intact, workflow completes successfully
 
    ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
 
@@ -2460,11 +2510,13 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    - ✅ If JSON missing (--skip-if-missing enabled): Graceful skip, no error
    - ✅ Skipping DB update doesn't affect user-facing functionality
 
-   **Error Handling**:
+   **Error Handling** (graceful degradation):
    - With --skip-if-missing: Exits cleanly (exit 0) if JSON missing
    - If database_uploader fails: Log warning, continue
-   - Workflow does NOT stop
+   - ❌ Do NOT stop workflow
+   - ✅ Workflow continues to completion
    - Database update is best-effort, always optional
+   - All user-facing outputs (JIRA, HTML, CLI) already exist
 
 8. Update master index (for report tracking):
    python .windsurf/workflows/templates/report_manager.py {pr_number}

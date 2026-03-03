@@ -2512,8 +2512,6 @@ Generate plain-text JIRA comment with ALL sections below (in this order):
     - Warnings: [list if any]
     - Steps Completed: 0, 1, 2, 3, 4, 5
 
-Save as plain text to: .ai-review/pr-{pr_number}-jira-comment.txt
-
 Format requirements:
 - Use clear section headers (1. HEADER, 2. SUMMARY, etc.)
 - No special Unicode (except spaces/newlines)
@@ -2521,9 +2519,15 @@ Format requirements:
 - No HTML tags
 ```
 
-Then post to JIRA (non-blocking if posting fails).
+**POST TO JIRA via MCP API**:
+- Use mcp_postJiraComment(issue_key="{jira_ticket_id}", comment_text="{generated_comment_text}")
+- Comment posted directly to JIRA (no local file storage)
+- If posting fails: Log warning, continue (non-blocking)
+- Team sees analysis immediately in JIRA ticket
 
-✅ MUST COMPLETE - Team sees complete analysis via JIRA
+**Output**: Posted to JIRA ticket (visible in JIRA immediately)
+
+✅ MUST COMPLETE - Team sees complete analysis in JIRA immediately
 
 
 STEP 3: GENERATE & AUTO-OPEN HTML REPORT (CRITICAL - MUST COMPLETE)
@@ -2729,12 +2733,10 @@ Generate ANSI-colored console output with ALL sections (in this order):
 11. EXECUTION STATUS
     ✅ Validation: Passed
     Generated: {timestamp}
-    Output Files:
-    - .ai-review/pr-{pr_number}-jira-comment.txt
-    - .ai-review/pr-{pr_number}-data.html
-    - .ai-review/pr-{pr_number}-cli-output.txt
-
-    View HTML report: .ai-review/pr-{pr_number}-data.html
+    Outputs:
+    - JIRA: Posted to issue {jira_ticket}
+    - HTML: .ai-review/pr-{pr_number}-data.html (auto-opened)
+    - CLI: Displayed in Cascade workflow summary
 
 Format requirements:
 - Use ANSI colors: Red (#d32f2f), Orange (#ff6f00), Yellow (#fbc02d), Blue (#1976d2)
@@ -2744,19 +2746,26 @@ Format requirements:
 - Clear section separators (═══ or ───)
 ```
 
-Output to: .ai-review/pr-{pr_number}-cli-output.txt
-Also print to stdout for immediate terminal feedback.
+**OUTPUT LOCATIONS**:
+- **JIRA**: Posted directly to JIRA ticket via MCP (no local file)
+- **HTML**: Saved to `.ai-review/pr-{pr_number}-data.html` AND auto-opened in browser
+- **CLI**: Displayed in Cascade workflow summary output (printed to console)
 
-✅ SECONDARY - Terminal feedback (can fail without blocking workflow)
+✅ EXECUTION ORDER:
+1. ✅ JIRA comment generated and posted to JIRA (team notified immediately)
+2. ✅ HTML report generated and auto-opened in browser (user sees detailed report)
+3. ✅ CLI summary displayed in Cascade workflow summary (immediate feedback)
+
+✅ SECONDARY - All critical outputs completed even if later phases fail
 
 
 FINAL RESULT:
 =============
 
-✅ Team has JIRA comment with complete analysis
-✅ User has HTML report auto-opened in browser
-✅ Terminal has CLI summary (if successful)
-✅ All critical outputs exist even if some phases fail
+✅ JIRA comment posted to team with complete analysis
+✅ HTML report saved to .ai-review/ and auto-opened in browser for detailed viewing
+✅ CLI summary displayed in Cascade workflow summary for immediate feedback
+✅ All critical outputs exist (cannot fail)
 ✅ Workflow continues to Step 9 (Unlock)
 ```
 

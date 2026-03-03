@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CLI Output Formatter for PR Code Review
-Generates clean validation-focused output for Cascade CLI
+Generates terminal-friendly summary with consistent format
 Cross-platform: Detects ANSI color support (Windows CMD, Terminal, etc.)
 """
 
@@ -71,8 +71,9 @@ class Colors:
 
 def print_header():
     """Print review completion header"""
-    print(f"\n{Colors.GREEN}✅ PR Code Review Complete{Colors.END}")
-    print("━" * 70)
+    print(f"\n{Colors.GREEN}{'='*70}{Colors.END}")
+    print(f"{Colors.GREEN}✅ CODE REVIEW ANALYSIS COMPLETE{Colors.END}")
+    print(f"{Colors.GREEN}{'='*70}{Colors.END}\n")
 
 def print_summary(summary):
     """Print validation summary"""
@@ -331,20 +332,27 @@ def print_recommendation(data):
 
 def print_generated_files(metadata):
     """Print information about generated reports"""
-    pr_number = metadata.get('pr_number')
+    pr_number = metadata.get('pr_number', 'unknown')
+    pr_author = metadata.get('author', 'Unknown')
+    reviewer = metadata.get('reviewer', 'Automated Review System')
     jira_tickets = metadata.get('jira_tickets', [])
     review_id = metadata.get('review_id', 'N/A')
-    
-    print(f"\n{Colors.BOLD}\u2704 Reports Generated:{Colors.END}")
-    print(f"  → .ai-review/pr-{pr_number}-review.html")
-    print(f"  → .ai-review/pr-{pr_number}-data.json")
-    
+
+    print(f"\n{Colors.BOLD}📋 Review Metadata:{Colors.END}")
+    print(f"  PR #: {pr_number} | Author: {pr_author}")
+    print(f"  Reviewer: {reviewer}")
+    print(f"  Review ID: {review_id}")
+
+    print(f"\n{Colors.BOLD}📊 Reports Generated:{Colors.END}")
+    print(f"  → .ai-review/pr-{pr_number}-data.html")
+    if os.path.exists(f".ai-review/pr-{pr_number}-data.json"):
+        print(f"  → .ai-review/pr-{pr_number}-data.json")
+
     if jira_tickets:
-        print(f"\n{Colors.BOLD}\u2708 JIRA Updated:{Colors.END}")
+        print(f"\n{Colors.BOLD}🎫 JIRA Updated:{Colors.END}")
         for ticket in jira_tickets:
             print(f"  → Comment posted to {ticket}")
-        print(f"  → Review ID: {review_id}")
-    
+
     print("\n" + "\u2501" * 70 + "\n")
 
 def format_cli_output(data):

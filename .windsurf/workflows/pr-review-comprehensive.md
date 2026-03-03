@@ -2317,16 +2317,22 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
 
    **IMPLEMENTATION** (pass analysis data directly):
    ```python
-   from generate_html import generate_html_report, save_html_report
-
-   # Generate HTML from in-memory analysis_data (consistent format)
-   html_content = generate_html_report(analysis_data)
-   save_html_report(analysis_data, '.ai-review/pr-{pr_number}-data.html')
-
-   # Auto-open in browser
+   from generate_simple_html import generate_simple_html_report, save_simple_html_report
    import webbrowser
-   webbrowser.open('.ai-review/pr-{pr_number}-data.html')
-   print("✅ HTML report generated and opened")
+   import os
+
+   # Generate simplified, PR-focused HTML from in-memory analysis_data
+   html_file = '.ai-review/pr-{pr_number}-data.html'
+   save_simple_html_report(analysis_data, html_file)
+
+   # Auto-open in browser (cross-platform)
+   try:
+       abs_path = os.path.abspath(html_file)
+       webbrowser.open(f'file://{abs_path}')
+       print(f"✅ HTML report generated and opened: {html_file}")
+   except Exception as e:
+       print(f"⚠️ Could not auto-open browser, but HTML report exists: {html_file}")
+       print(f"   Please open manually in your browser")
    ```
 
    **Report Format** (consistent with JIRA and CLI):
@@ -2431,29 +2437,34 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
 
 7. 🔵 PRIORITY 5: UPDATE DATABASE (optional, only if JSON exists):
 
-   **ONLY EXECUTE IF json_saved == true**:
+   **EXECUTE WITH --skip-if-missing FLAG** (graceful skip if JSON missing):
    ```bash
-   if [ "$json_saved" = true ]; then
-       python .windsurf/workflows/templates/database_uploader.py \
-         .ai-review/pr-{pr_number}-data.json
+   python .windsurf/workflows/templates/database_uploader.py \
+     .ai-review/pr-{pr_number}-data.json \
+     --skip-if-missing
 
-       echo "✅ Database updated with audit trail"
-   else
-       echo "⚠️ Database update skipped - JSON not available"
-       # Workflow continues, database update is optional
-   fi
+   # Exit codes:
+   # 0 = Success (database updated) OR graceful skip (JSON missing)
+   # 1 = Failure
    ```
+
+   **Why --skip-if-missing?**
+   - ✅ Graceful skip if JSON file is missing (no error)
+   - ✅ Useful for development/testing without database setup
+   - ✅ Production mode: omit flag to use fallback data if JSON missing
+   - ✅ Clean exit (exit 0) allows workflow to complete successfully
 
    **Why database is optional?**
    - ✅ Audit trail is nice-to-have, not critical
    - ✅ If database unavailable: All reports already exist and delivered
-   - ✅ Database update depends on JSON, so only runs if JSON successful
+   - ✅ If JSON missing (--skip-if-missing enabled): Graceful skip, no error
    - ✅ Skipping DB update doesn't affect user-facing functionality
 
    **Error Handling**:
+   - With --skip-if-missing: Exits cleanly (exit 0) if JSON missing
    - If database_uploader fails: Log warning, continue
    - Workflow does NOT stop
-   - Database update is best-effort
+   - Database update is best-effort, always optional
 
 8. Update master index (for report tracking):
    python .windsurf/workflows/templates/report_manager.py {pr_number}

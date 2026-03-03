@@ -364,22 +364,16 @@ class ExecutionOrchestrator:
                 self.phases['database']['message'] = msg
                 return False
 
-            # Create temp JSON for database
-            temp_json = self.output_dir / f".temp-pr-{self.pr_number}.json"
-            with open(temp_json, 'w', encoding='utf-8') as f:
-                json.dump(self.analysis_data, f, indent=2, default=str)
+            # Pass data via stdin (no JSON files)
+            json_data = json.dumps(self.analysis_data, indent=2, default=str)
 
             result = subprocess.run(
-                [sys.executable, str(uploader), str(temp_json)],
+                [sys.executable, str(uploader)],
+                input=json_data,
                 capture_output=True,
                 text=True,
                 timeout=60
             )
-
-            try:
-                temp_json.unlink()
-            except:
-                pass
 
             if result.returncode == 0:
                 msg = "Database update successful"
@@ -403,7 +397,7 @@ class ExecutionOrchestrator:
     def phase_3_generate_cli(self) -> bool:
         """PHASE 3: Generate CLI output (SECONDARY - Can fail without blocking)"""
         try:
-            self.log("\n[PHASE 3/5] GENERATING CLI OUTPUT (SECONDARY)...", "INFO")
+            self.log("\n[PHASE 3/4] GENERATING CLI OUTPUT (SECONDARY)...", "INFO")
 
             cli_formatter = Path(".windsurf/workflows/templates/cli_formatter.py")
             if not cli_formatter.exists():
@@ -412,22 +406,16 @@ class ExecutionOrchestrator:
                 self.phases['cli']['message'] = msg
                 return False
 
-            # Create temp JSON for CLI formatter
-            temp_json = self.output_dir / f".temp-pr-{self.pr_number}-cli.json"
-            with open(temp_json, 'w', encoding='utf-8') as f:
-                json.dump(self.analysis_data, f, indent=2, default=str)
+            # Pass data via stdin (no JSON files)
+            json_data = json.dumps(self.analysis_data, indent=2, default=str)
 
             result = subprocess.run(
-                [sys.executable, str(cli_formatter), str(temp_json)],
+                [sys.executable, str(cli_formatter)],
+                input=json_data,
                 capture_output=True,
                 text=True,
                 timeout=30
             )
-
-            try:
-                temp_json.unlink()
-            except:
-                pass
 
             if result.returncode == 0:
                 cli_file = self.output_dir / f"pr-{self.pr_number}-cli-output.txt"
@@ -470,22 +458,16 @@ class ExecutionOrchestrator:
                 self.phases['html']['message'] = msg
                 return False
 
-            # Create temp JSON for HTML generation
-            temp_json = self.output_dir / f".temp-pr-{self.pr_number}-html.json"
-            with open(temp_json, 'w', encoding='utf-8') as f:
-                json.dump(self.analysis_data, f, indent=2, default=str)
+            # Pass data via stdin (no JSON files)
+            json_data = json.dumps(self.analysis_data, indent=2, default=str)
 
             result = subprocess.run(
-                [sys.executable, str(gen), str(temp_json)],
+                [sys.executable, str(gen)],
+                input=json_data,
                 capture_output=True,
                 text=True,
                 timeout=30
             )
-
-            try:
-                temp_json.unlink()
-            except:
-                pass
 
             html_file = self.output_dir / f"pr-{self.pr_number}-data.html"
 

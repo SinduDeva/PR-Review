@@ -327,51 +327,55 @@ def _create_fallback_data(json_file: str) -> Dict[str, Any]:
 
 def main():
     """Main entry point for database uploader"""
-    if len(sys.argv) < 2:
-        print("Usage: python database_uploader.py <json_file> [--host localhost] [--db pr_review_audit] [--skip-if-missing]")
-        sys.exit(1)
-
-    json_file = sys.argv[1]
+    import os
 
     # Parse arguments
     kwargs = {'host': 'localhost', 'db': 'pr_review_audit'}
     skip_if_missing = False
+    json_file = None
 
-    for i in range(2, len(sys.argv), 2):
+    for i in range(1, len(sys.argv), 2):
         if sys.argv[i] == '--host' and i + 1 < len(sys.argv):
             kwargs['host'] = sys.argv[i + 1]
         elif sys.argv[i] == '--db' and i + 1 < len(sys.argv):
             kwargs['db'] = sys.argv[i + 1]
         elif sys.argv[i] == '--skip-if-missing':
             skip_if_missing = True
+        elif not sys.argv[i].startswith('--'):
+            json_file = sys.argv[i]
 
     try:
-        # Check if JSON file exists
-        import os
-        if not os.path.exists(json_file):
-            if skip_if_missing:
-                print(f"⏭️  Skipping database upload (JSON file not found, --skip-if-missing enabled)")
-                print(f"   JSON file: {json_file}")
-                print(f"   This is normal during development/testing")
-                sys.exit(0)
-            else:
-                print(f"⚠️  JSON file not found: {json_file}")
-
-        # Load JSON data with fallback
+        # Load JSON data from stdin or file
         json_data = None
-        try:
-            with open(json_file, 'r') as f:
-                json_data = json.load(f)
-            print(f"✅ Loaded JSON data from: {json_file}")
-        except FileNotFoundError:
-            if skip_if_missing:
-                print(f"⏭️  Skipping database upload (JSON file not found)")
-                sys.exit(0)
-            print(f"⚠️  JSON file not found: {json_file}")
-            json_data = _create_fallback_data(json_file)
-        except json.JSONDecodeError:
-            print(f"⚠️  Invalid JSON file: {json_file}")
-            json_data = _create_fallback_data(json_file)
+
+        # Try stdin first (preferred method - no temp files)
+        if not sys.stdin.isatty():
+            try:
+                json_data = json.load(sys.stdin)
+                print(f"✅ Loaded JSON data from stdin")
+            except (json.JSONDecodeError, EOFError) as e:
+                print(f"⚠️  Invalid JSON from stdin: {e}")
+
+        # Fallback to file if provided and stdin didn't work
+        if json_data is None and json_file:
+            if not os.path.exists(json_file):
+                if skip_if_missing:
+                    print(f"⏭️  Skipping database upload (JSON file not found, --skip-if-missing enabled)")
+                    sys.exit(0)
+                else:
+                    print(f"⚠️  JSON file not found: {json_file}")
+            else:
+                try:
+                    with open(json_file, 'r') as f:
+                        json_data = json.load(f)
+                    print(f"✅ Loaded JSON data from: {json_file}")
+                except json.JSONDecodeError:
+                    print(f"⚠️  Invalid JSON file: {json_file}")
+                    json_data = _create_fallback_data(json_file)
+
+        # Create fallback if still no data
+        if json_data is None:
+            json_data = _create_fallback_data(json_file or "stdin")
 
         if json_data is None:
             print("❌ Failed to load or create JSON data")
@@ -387,6 +391,8 @@ def main():
 
     except Exception as e:
         print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 

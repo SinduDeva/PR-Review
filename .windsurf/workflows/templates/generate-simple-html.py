@@ -616,15 +616,19 @@ def save_html_report(data, output_file=None, auto_open=True):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        json_file = sys.argv[1]
-        try:
-            with open(json_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            # Auto-open HTML report in browser
-            save_html_report(data, auto_open=True)
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            sys.exit(1)
-    else:
-        print("Usage: python generate-simple-html.py <data.json>")
+    try:
+        # Read JSON from stdin (no file needed)
+        data = json.load(sys.stdin)
+
+        # Generate and save HTML report (auto-open disabled in subprocess)
+        save_html_report(data, auto_open=False)
+
+        sys.exit(0)
+    except (json.JSONDecodeError, EOFError) as e:
+        print(f"❌ Error reading JSON from stdin: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

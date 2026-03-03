@@ -392,15 +392,38 @@ def format_cli_summary(data):
     print(f"{status_emoji} PR#{pr} | Critical: {critical} | High: {high} | Coverage: {coverage} | {rec}")
 
 if __name__ == '__main__':
-    # NOTE: This script is designed to be imported and used by the workflow.
-    # It receives analysis_data directly from workflow execution.
-    #
-    # Example usage in workflow:
-    # from cli_formatter import format_cli_output, format_cli_summary
-    # format_cli_output(analysis_data)  # Full output
-    # format_cli_summary(analysis_data)  # Compact summary
+    import sys
 
-    print("❌ This script is designed for workflow integration, not standalone use.")
-    print("   Import the functions instead:")
-    print("   - format_cli_output(analysis_data)")
-    print("   - format_cli_summary(analysis_data)")
+    # Read analysis data from stdin
+    try:
+        data = json.load(sys.stdin)
+    except (json.JSONDecodeError, EOFError) as e:
+        print(f"❌ Error reading JSON from stdin: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Extract PR number for output file
+    pr_number = data.get('metadata', {}).get('pr_number', 'unknown')
+
+    # Format CLI output and save to file
+    try:
+        # Create output directory if needed
+        os.makedirs('.ai-review', exist_ok=True)
+
+        # Capture output to file
+        output_file = f".ai-review/pr-{pr_number}-cli-output.txt"
+        with open(output_file, 'w', encoding='utf-8') as f:
+            # Redirect stdout to file
+            old_stdout = sys.stdout
+            sys.stdout = f
+            try:
+                format_cli_output(data)
+            finally:
+                sys.stdout = old_stdout
+
+        # Success
+        sys.exit(0)
+    except Exception as e:
+        print(f"❌ Error generating CLI output: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

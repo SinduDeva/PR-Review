@@ -2520,12 +2520,27 @@ Format requirements:
 ```
 
 **POST TO JIRA via MCP API**:
-- Use mcp_postJiraComment(issue_key="{jira_ticket_id}", comment_text="{generated_comment_text}")
-- Comment posted directly to JIRA (no local file storage)
-- If posting fails: Log warning, continue (non-blocking)
-- Team sees analysis immediately in JIRA ticket
 
-**Output**: Posted to JIRA ticket (visible in JIRA immediately)
+1. Get JIRA ticket ID:
+   - Primary: From branch name (extracted in Step 0)
+   - Fallback: From PR metadata (extracted in Step 1)
+   - Format: {PROJECT}-{TICKET_NUMBER} (e.g., PROJ-8408)
+
+2. Get Cloud ID:
+   - Call: mcp0_getAccessibleAtlassianResources()
+   - Extract: cloudId UUID from response
+   - If fails: Log warning, save comment for manual posting
+
+3. Post comment to JIRA:
+   - Call: mcp0_addCommentToJiraIssue(
+       cloudId="{cloud_id_uuid}",
+       issueIdOrKey="{jira_ticket_id}",
+       commentBody="{generated_comment_text}"
+     )
+   - If succeeds: ✅ "Comment posted to {jira_ticket_id}"
+   - If fails: ⚠️ Log error, save comment for manual posting, continue (non-blocking)
+
+**Output**: Posted directly to JIRA ticket (visible in JIRA immediately, no local file needed)
 
 ✅ MUST COMPLETE - Team sees complete analysis in JIRA immediately
 

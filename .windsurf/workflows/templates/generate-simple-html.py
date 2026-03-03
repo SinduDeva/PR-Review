@@ -108,7 +108,7 @@ def open_html_in_browser(html_file):
 
 
 def generate_html_report(data):
-    """Generate HTML report with expandable file sections"""
+    """Generate HTML report with expandable file sections and all required analysis sections"""
 
     metadata = data.get('metadata', {})
     summary = data.get('summary', {})
@@ -117,6 +117,10 @@ def generate_html_report(data):
     spring_boot = data.get('spring_boot_validation', {})
     test_coverage = data.get('test_coverage', {})
     api_changes = data.get('api_changes', []) if isinstance(data.get('api_changes'), list) else []
+    impact_analysis = data.get('impact_analysis', {})
+    positive_obs = data.get('positive_observations', {})
+    ai_summary = data.get('ai_summary', {})
+    execution_status = data.get('execution_status', {})
 
     pr_number = metadata.get('pr_number', 'unknown')
     author = metadata.get('author', 'Unknown')
@@ -574,8 +578,52 @@ def generate_html_report(data):
         <h2>🔗 API Changes</h2>
         <p><strong>Total Changes:</strong> {len(api_changes)}</p>
         <p><strong>Breaking Changes:</strong> {len([c for c in api_changes if c.get('type') == 'BREAKING'])}</p>
+        {f"<p><strong>Non-Breaking Changes:</strong> {len([c for c in api_changes if c.get('type') == 'NON_BREAKING'])}</p>" if [c for c in api_changes if c.get('type') == 'NON_BREAKING'] else ""}
+        {f"<p><strong>New Endpoints:</strong> {len([c for c in api_changes if c.get('type') == 'NEW'])}</p>" if [c for c in api_changes if c.get('type') == 'NEW'] else ""}
     </div>
     ''' if api_changes else ""}
+
+    {f'''
+    <!-- IMPACT ANALYSIS -->
+    <div class="section">
+        <h2>📊 Impact Analysis</h2>
+        {f'<p><strong>Risk Level:</strong> <span style="color: {{"HIGH": "#d32f2f", "MEDIUM": "#ff6f00", "LOW": "#388e3c"}.get(impact_analysis.get("summary", {{}}).get("risk_level", "UNKNOWN"), "#333")}">{impact_analysis.get("summary", {{}}).get("risk_level", "UNKNOWN")}</span></p>' if impact_analysis.get("summary", {{}}).get("risk_level") else ""}
+        {f"<p><strong>Affected APIs:</strong> {', '.join(impact_analysis.get('summary', {{}}).get('affected_apis', []))}</p>" if impact_analysis.get("summary", {{}}).get("affected_apis") else ""}
+        {f"<p><strong>Affected Components:</strong> {', '.join(impact_analysis.get('summary', {{}}).get('affected_components', []))}</p>" if impact_analysis.get("summary", {{}}).get("affected_components") else ""}
+        {f"<p><strong>Dependency Impact:</strong> {escape_html(impact_analysis.get('summary', {{}}).get('dependency_impact', ''))}</p>" if impact_analysis.get("summary", {{}}).get("dependency_impact") else ""}
+        {f"<p><strong>Transitive Impact:</strong> {escape_html(impact_analysis.get('summary', {{}}).get('transitive_impact', ''))}</p>" if impact_analysis.get("summary", {{}}).get("transitive_impact") else ""}
+    </div>
+    ''' if impact_analysis else ""}
+
+    {f'''
+    <!-- POSITIVE OBSERVATIONS -->
+    <div class="section">
+        <h2>✨ Positive Observations</h2>
+        {f"<p><strong>Strengths:</strong></p><ul>{''.join([f'<li>{escape_html(s)}</li>' for s in positive_obs.get('strengths', [])])}</ul>" if positive_obs.get("strengths") else ""}
+        {f"<p><strong>Best Practices Followed:</strong></p><ul>{''.join([f'<li>{escape_html(p)}</li>' for p in positive_obs.get('best_practices', [])])}</ul>" if positive_obs.get("best_practices") else ""}
+        {f"<p><strong>Good Patterns Used:</strong></p><ul>{''.join([f'<li>{escape_html(p)}</li>' for p in positive_obs.get('good_patterns', [])])}</ul>" if positive_obs.get("good_patterns") else ""}
+    </div>
+    ''' if positive_obs else ""}
+
+    {f'''
+    <!-- AI SUMMARY -->
+    <div class="section">
+        <h2>🤖 AI Summary</h2>
+        {f"<p>{escape_html(ai_summary.get('overall_summary', ''))}</p>" if ai_summary.get("overall_summary") else ""}
+        {f"<p><strong>Key Takeaways:</strong></p><ul>{''.join([f'<li>{escape_html(t)}</li>' for t in ai_summary.get('key_takeaways', [])])}</ul>" if ai_summary.get("key_takeaways") else ""}
+    </div>
+    ''' if ai_summary else ""}
+
+    {f'''
+    <!-- EXECUTION STATUS -->
+    <div class="section">
+        <h2>⚙️ Execution Status</h2>
+        {f"<p><strong>Validation Results:</strong> {escape_html(execution_status.get('validation_results', ''))}</p>" if execution_status.get("validation_results") else ""}
+        {f"<p><strong>Warnings:</strong> {escape_html(execution_status.get('warnings', ''))}</p>" if execution_status.get("warnings") else ""}
+        {f"<p><strong>Steps Completed:</strong></p><ul>{''.join([f'<li>{escape_html(s)}</li>' for s in execution_status.get('steps_completed', [])])}</ul>" if execution_status.get("steps_completed") else ""}
+        {f"<p><strong>Execution Time:</strong> {metadata.get('execution_time', 'N/A')}</p>" if metadata.get("execution_time") else ""}
+    </div>
+    ''' if execution_status else ""}
 
 </div>
 

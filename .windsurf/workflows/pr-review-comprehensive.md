@@ -1917,11 +1917,59 @@ Deduplicate and prioritize by:
    - `recommendations[]` - Actionable next steps
    - `ai_summary` - Overall summary of changes and impacts
 
-**VALIDATION**: Before generating reports, verify:
-- [ ] findings array is NOT empty (or clearly indicate "no issues found")
-- [ ] overall_recommendation is populated with decision (APPROVE/REQUEST_CHANGES/BLOCK)
-- [ ] impact_analysis risk_level is set (HIGH/MEDIUM/LOW)
-- [ ] ai_summary captures the essence of code analysis and impacts
+#### 8b-GATE: Validate Analysis Completion ⚠️ CRITICAL
+
+**BEFORE generating any reports**, validate all analysis is complete:
+
+```python
+from analysis_validator import validate_analysis_completion, get_validation_report
+
+# Check if analysis is complete
+is_complete, missing_fields, warnings = validate_analysis_completion(analysis_data)
+
+# Print validation report
+report = get_validation_report(is_complete, missing_fields, warnings)
+print(report)
+
+if not is_complete:
+    print("❌ CANNOT GENERATE REPORTS - Analysis incomplete")
+    print("Missing fields:")
+    for field in missing_fields:
+        print(f"  - {field}")
+    sys.exit(1)
+
+print("✅ Analysis complete - proceeding with report generation")
+```
+
+**VALIDATION REQUIREMENTS** (all must be true):
+
+1. **Metadata** ✅
+   - `pr_number` exists (PR identifier)
+   - `author` exists (PR creator)
+   - `reviewer` exists (defaults to "Automated Review System")
+
+2. **Summary** ✅
+   - All fields present: `files_changed`, `files_validated`, `critical_issues`, `high_issues`, `medium_issues`, `low_issues`
+   - Counts are accurate and non-negative
+
+3. **Findings** ✅
+   - Array exists (can be empty if no issues found)
+   - If not empty: each finding has `severity`, `file`, `description`
+
+4. **Recommendation** ✅
+   - `decision` present: `APPROVE|REQUEST_CHANGES|BLOCK`
+   - `reason` present: explanation for decision
+
+5. **Impact Analysis** ✅
+   - `summary` exists with `risk_level`: `HIGH|MEDIUM|LOW`
+   - `affected_apis` or empty array
+
+**OPTIONAL but RECOMMENDED** (warnings if missing):
+- `ai_summary` - Overall summary of changes
+- `files_reviewed` - Detailed file analysis
+- `test_coverage` - Coverage metrics
+- `spring_boot_validation` - Framework validation
+- `api_changes` - API impact details
 
 **Save to**: `.ai-review/pr-{pr_number}-data.json`
 
@@ -2197,10 +2245,19 @@ Deduplicate and prioritize by:
 
 #### 8c: Execute Reports in Priority Order (JIRA → HTML → CLI → JSON → DB)
 
+**⚠️ PREREQUISITE**: Analysis validation gate (8b-GATE) must pass before proceeding!
+
+**All reports follow consistent format** (see REPORT_FORMAT_GUIDE.md):
+- ✅ Same structure: metadata, summary, analysis, recommendations
+- ✅ No Cascade/Windsurf branding
+- ✅ PR number and reviewer in all reports
+- ✅ Consistent field naming and organization
+
 **Actions** (execute in THIS exact order — do NOT skip):
 
 ```
 ⚠️ CRITICAL WORKFLOW ORDER: Execute by priority, JIRA first, DB last
+⚠️ PREREQUISITE: Analysis validation passed (8b-GATE)
 JSON is NOT required. Database update only happens if JSON saved successfully.
 
 1. Ensure .ai-review/ directory exists:
@@ -2222,7 +2279,7 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    from jira_formatter import format_jira_comment
    from bitbucket_client import post_jira_comment
 
-   # Format JIRA comment from in-memory analysis_data
+   # Format JIRA comment from in-memory analysis_data (consistent format)
    jira_comment = format_jira_comment(analysis_data)
 
    # Post to MCP (Bitbucket Cloud JIRA integration)
@@ -2240,20 +2297,31 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    - jira_posted = success/failed flag
    - Workflow does NOT stop, proceeds to HTML generation
 
+   **Report Format** (no Cascade branding):
+   - Header: PR number, author, reviewer, branch, dates
+   - Summary: Issue counts, file statistics
+   - Code Analysis: Critical/High findings with details
+   - Spring Boot Validation: Scores and issues
+   - Test Coverage: Overall %, by type, gaps
+   - API Impact: Breaking changes, affected endpoints
+   - Impact Analysis: Risk level, affected components
+   - Recommendations: Approval decision with must-fix/should-fix items
+   - Footer: Links and review metadata
+
    ✅ INCLUDES CODE ANALYSIS: All findings with context
    ✅ INCLUDES IMPACT SUMMARY: Risk assessment, API impacts, recommendations
    ✅ HIGHEST PRIORITY: Posted before HTML, not dependent on JSON
+   ✅ NO CASCADE BRANDING: Professional, tool-agnostic format
 
 4. 🟠 PRIORITY 2: GENERATE & AUTO-OPEN HTML REPORT (user-facing detailed analysis):
 
    **IMPLEMENTATION** (pass analysis data directly):
    ```python
-   from generate_html import generate_html_report
+   from generate_html import generate_html_report, save_html_report
 
-   # Generate HTML from in-memory analysis_data
+   # Generate HTML from in-memory analysis_data (consistent format)
    html_content = generate_html_report(analysis_data)
-   with open('.ai-review/pr-{pr_number}-data.html', 'w') as f:
-       f.write(html_content)
+   save_html_report(analysis_data, '.ai-review/pr-{pr_number}-data.html')
 
    # Auto-open in browser
    import webbrowser
@@ -2261,16 +2329,31 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    print("✅ HTML report generated and opened")
    ```
 
+   **Report Format** (consistent with JIRA and CLI):
+   - Professional Bootstrap styling
+   - Metadata section: PR number, author, reviewer, dates
+   - Summary tables: files, issues, coverage
+   - Code Analysis: findings by severity with details
+   - Spring Boot Validation: scores and issue breakdown
+   - Test Coverage: percentages and gap analysis
+   - API Impact: breaking changes, affected endpoints
+   - Impact Analysis: risk assessment, affected layers
+   - Recommendations: decision with actionable items
+   - Interactive elements: collapsible sections, sortable tables
+   - Responsive design: works on desktop and mobile
+
    ✅ GUARANTEED TO COMPLETE - even if generate-html.py fails, use fallback HTML
    ✅ INCLUDES CODE ANALYSIS: All findings, severity breakdown, affected files
    ✅ INCLUDES IMPACT SUMMARY: Risk level, affected APIs, test coverage
    ✅ AUTO-OPENS: User sees report immediately without manual action
+   ✅ CONSISTENT FORMAT: Same structure as JIRA and CLI reports
+   ✅ NO BRANDING: Professional, tool-agnostic styling
 
    **CRITICAL**: If generate-html.py fails:
    - DO NOT skip HTML generation
    - Generate minimal fallback HTML with code analysis data
    - Include: findings table, severity breakdown, affected files list
-   - Include: impact analysis, risk level, execution status
+   - Include: impact analysis, risk level, execution status, metadata
    - Output: .ai-review/pr-{pr_number}-data.html (fallback version)
 
    Output: .ai-review/pr-{pr_number}-data.html (auto-opened in browser)
@@ -2279,15 +2362,33 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
 
    **IMPLEMENTATION** (pass analysis data directly):
    ```python
-   from cli_formatter import format_cli_summary
+   from cli_formatter import format_cli_output, format_cli_summary
 
-   cli_output = format_cli_summary(analysis_data)
-   print(cli_output)
+   # Full output (comprehensive)
+   format_cli_output(analysis_data)
+
+   # Or compact summary (single-line)
+   format_cli_summary(analysis_data)
    ```
+
+   **Report Format** (consistent with JIRA and HTML):
+   - ANSI color support (Windows Terminal, Linux, macOS)
+   - Metadata section: PR#, author, reviewer
+   - File detection method and statistics
+   - Summary table: issue counts by severity
+   - Code Analysis: critical/high findings with file locations
+   - Spring Boot Validation: scores with status badges
+   - Test Coverage: percentages and coverage gaps
+   - API Impact: breaking changes summary
+   - Impact Analysis: risk level and affected components
+   - Recommendations: decision and action items
+   - Report links and metadata
 
    ✅ INCLUDES CODE ANALYSIS: Issue counts by severity, top findings
    ✅ INCLUDES IMPACT SUMMARY: Risk level, affected components, next steps
    ✅ IMMEDIATE FEEDBACK: User sees summary in terminal right away
+   ✅ CONSISTENT FORMAT: Same structure as JIRA and HTML
+   ✅ CROSS-PLATFORM: Works on Windows, Linux, macOS with color detection
 
    Output: Printed to stdout for immediate visibility
 

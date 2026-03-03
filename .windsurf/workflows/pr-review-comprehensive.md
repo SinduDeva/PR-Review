@@ -1,6 +1,6 @@
 ---
 auto_execution_mode: 3
-description: Comprehensive PR Code Review with Markdown Report & JIRA Integration
+description: Comprehensive PR Code Review with Rich HTML Report & JIRA Integration
 ---
 
 ## CODE MODE LOCK — Workflow Integrity Protection
@@ -8,7 +8,7 @@ description: Comprehensive PR Code Review with Markdown Report & JIRA Integratio
 **Purpose**: Prevent workflow file modifications during execution to ensure analysis integrity.
 
 **What is LOCKED**:
-- ❌ Editing `pr-review-comprehensive.md` during execution
+- ❌ Editing `pr-review-comprehensive.html` during execution
 - ❌ Modifying workflow steps mid-run
 - ❌ Changing analysis parameters after execution starts
 
@@ -37,7 +37,7 @@ User runs workflow 3rd time → ✅ Proceeds again
 **File Modification Flow**:
 ```
 User runs workflow → Reports generated → "COMPLETE"
-User edits pr-review-comprehensive.md → ❌ Lock detects change
+User edits pr-review-comprehensive.html → ❌ Lock detects change
 User tries to run workflow → ❌ BLOCKED with error:
   "Cannot execute: workflow file was modified since last run.
    To re-run analysis, restore original file or create new branch."
@@ -129,10 +129,10 @@ Enterprise-grade automated code review for Bitbucket Pull Requests with:
 - **Change impact assessment (functionality, APIs)**
 - **Test coverage validation**
 - **AI-powered dependency graphs**
-- **Markdown reporting (clean, portable format)**
+- **HTML reporting (clean, portable format)**
 - **JIRA integration for report submission**
 
-**Format**: Markdown reporting is portable, works in git platforms, and is easily shareable
+**Format**: HTML reporting is portable, works in git platforms, and is easily shareable
 
 **Usage**: Invoke from Windsurf IDE - workflow auto-detects current branch and finds associated PR
 
@@ -148,7 +148,7 @@ Enterprise-grade automated code review for Bitbucket Pull Requests with:
 
 ## Error Handling Guidelines
 
-**Golden Rule**: Workflow ALWAYS generates markdown report with error details, even if steps fail.
+**Golden Rule**: Workflow ALWAYS generates HTML report with error details, even if steps fail.
 
 **Error Pattern**: Try → Fallback → Skip → Report & Continue
 
@@ -168,7 +168,7 @@ SKIP (if Fallback Also Fails):
   Log error to execution_status metadata
   Set step data to empty/null
   Continue to next step
-  Report error in final markdown report
+  Report error in final HTML report
 
 REPORT (Always):
   Track in execution_status:
@@ -176,7 +176,7 @@ REPORT (Always):
     - attempted: number of attempts
     - fallback_used: true|false
     - error: error message if applicable
-  Include all errors in markdown report for transparency
+  Include all errors in HTML report for transparency
 ```
 
 **Error Handling by Step**:
@@ -190,7 +190,7 @@ REPORT (Always):
 | 4 | Spring Boot validation | Retry with timeout | Use empty validation |
 | 5 | Impact analysis | Retry with timeout | Use empty graph |
 | 6 | JIRA posting | Log for manual posting | Continue (optional) |
-| 7 | Markdown generation | Basic markdown fallback | Minimal text report |
+| 7 | HTML generation | Basic html fallback | Minimal text report |
 | 8 | CLI output | Inline summary | Display empty summary |
 | **8b** | **JSON save** | **Skip gracefully** | **Continue to DB** |
 | **8c** | **Database update** | **Skip gracefully** | **Workflow completes** |
@@ -207,13 +207,13 @@ REPORT (Always):
 - Step 1-8: Any step fails
 - Action: Log error, set data to empty/null, continue to next step
 - Result: Workflow completes with partial data
-- Reason: User-facing outputs (JIRA, Markdown, CLI) already exist
+- Reason: User-facing outputs (JIRA, HTML, CLI) already exist
 
 **Graceful Degradation Examples**:
 ```
 JSON save fails   → Skip JSON save, continue to DB upload
                    → Workflow completes successfully
-                   → Markdown/JIRA/CLI all exist
+                   → HTML/JIRA/CLI all exist
 
 Database upload fails → Skip DB upload, end workflow
                       → All reports still exist
@@ -221,11 +221,11 @@ Database upload fails → Skip DB upload, end workflow
 
 Step 1-8 failures → Log error, continue to next step
                  → Workflow completes with what exists
-                 → Markdown report includes error details
+                 → HTML report includes error details
 ```
 
 **Critical Behavior**:
-- ✅ Markdown report ALWAYS generated (primary or fallback method)
+- ✅ HTML report ALWAYS generated (primary or fallback method)
 - ✅ JIRA comment ALWAYS posted (if Step 6 completes)
 - ✅ CLI summary ALWAYS printed (if Step 8a completes)
 - ✅ Workflow NEVER stops except for Step 0 PR not found
@@ -244,7 +244,7 @@ Step 1-8 failures → Log error, continue to next step
 **LOCK WORKFLOW FILE - EXECUTION STARTING**:
 ```bash
 python .windsurf/workflows/templates/workflow_lock.py \
-  .windsurf/workflows/pr-review-comprehensive.md \
+  .windsurf/workflows/pr-review-comprehensive.html \
   lockfile
 
 Expected output:
@@ -263,7 +263,7 @@ STEP: Pre-Flight Workflow File Validation
 CRITICAL: Read the ENTIRE workflow file from start to finish before execution
 
 1. Read complete workflow file from disk (ALL LINES):
-   File: .windsurf/workflows/pr-review-comprehensive.md
+   File: .windsurf/workflows/pr-review-comprehensive.html
    Read entire file line by line (from line 1 to end)
    Capture: workflow_content (complete file contents)
    Verify: File successfully read without errors
@@ -324,16 +324,16 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
    Step 8 sub-steps (3 total): ✅ CORRECTED ORDER
    - #### 8a: Consolidate All Analysis Results
    - #### 8b: Generate JSON Data File for Reports
-   - #### 8c: Generate Markdown Report and CLI Output
+   - #### 8c: Generate HTML Report and CLI Output
 
    VALIDATION: Count must equal exactly 14 ✅
 
-6. Verify markdown hierarchy consistency:
+6. Verify html hierarchy consistency:
    - All main steps (0-9) use ONLY ### heading level
    - All sub-steps (4a-4g, 5a-5b, 6a-6c, 7a-7b) use ONLY #### heading level
    - NO sub-steps use ### format
    - NO main steps use #### format
-   - File is well-formed markdown
+   - File is well-formed html
 
 7. Verify file integrity:
    - File size: ~2200+ lines (minimum)
@@ -345,7 +345,7 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
    {
      "workflow_validation": {
        "timestamp": "{ISO8601_timestamp}",
-       "file_path": ".windsurf/workflows/pr-review-comprehensive.md",
+       "file_path": ".windsurf/workflows/pr-review-comprehensive.html",
        "file_read": true,
        "entire_file_scanned": true,
        "file_size_bytes": {actual_bytes},
@@ -353,7 +353,7 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
        "main_steps_found": 10,
        "sub_steps_found": 14,
        "yaml_frontmatter": "valid",
-       "markdown_hierarchy": "consistent",
+       "html_hierarchy": "consistent",
        "all_sections_present": true,
        "structure_valid": true,
        "warnings": [],
@@ -468,7 +468,7 @@ FAILURE HANDLING (if both methods fail):
    ```bash
    # Release lock before aborting
    python .windsurf/workflows/templates/workflow_lock.py \
-     .windsurf/workflows/pr-review-comprehensive.md \
+     .windsurf/workflows/pr-review-comprehensive.html \
      unlockfile
 
    # Abort with error code
@@ -867,7 +867,7 @@ Function: deduplicate_by_path(files)
 **Exclude from validation** (but include in impact analysis):
 - Test files: `*Test.java`, `*Tests.java`, `src/test/**/*`
 - Build files: `pom.xml`, `build.gradle` (unless config changes)
-- Documentation: `*.md`, `*.txt` (unless affects behavior)
+- Documentation: `*.html`, `*.txt` (unless affects behavior)
 
 ---
 
@@ -890,7 +890,7 @@ Function: deduplicate_by_path(files)
 **Excluded from validation** (but tracked for context):
 - Test files: `src/test/**/*`, `*Test.java`, `*Tests.java`
 - Build configs: `pom.xml`, `build.gradle` (note changes only)
-- Documentation: `README.md`, `*.adoc`, `*.txt`
+- Documentation: `README.html`, `*.adoc`, `*.txt`
 
 **Technology Detection** (on changed Java files):
 ```
@@ -927,7 +927,7 @@ Function: deduplicate_by_path(files)
       "DataControllerTest.java"
     ],
     "documentation": [
-      "README.md"
+      "README.html"
     ]
   },
   "technology_stack": {
@@ -1743,7 +1743,7 @@ For each ticket_id in ticket_list:
 
 2. Read the JIRA comment file generated in Step 6c:
    File: .ai-review/pr-{pr_number}-jira-comment.txt
-   (Generated by jira_formatter.py — contains pre-formatted Markdown)
+   (Generated by jira_formatter.py — contains pre-formatted HTML)
 
 3. Post comment to JIRA:
    Call: mcp0_addCommentToJiraIssue(
@@ -1876,7 +1876,7 @@ If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
 4. If database not available:
    ⚠️ Database connection failed: [error]
    ⚠️ Database upload not completed - workflow continues to Step 8
-   → Reports will still be generated (JSON, Markdown, CLI)
+   → Reports will still be generated (JSON, HTML, CLI)
    → User can manually upload database later if desired
    → Step 7 completes with database_uploaded=false status
 
@@ -1884,7 +1884,7 @@ If you see error: `invalid cloudId` or `Atlassian resources not found`, verify:
    ⚠️ JSON file not found - using fallback data
    ✅ Database updated with minimal metadata (PR number, author, etc.)
    ✅ Workflow continues to Step 8 (non-blocking)
-   → Step 8 generates JSON for Markdown/CLI reports
+   → Step 8 generates JSON for HTML/CLI reports
    → Reports generated normally despite JSON initially missing
 
 5. Log in execution_status:
@@ -1943,7 +1943,7 @@ Deduplicate and prioritize by:
 
 **Requirement**: Execute reports in PRIORITY ORDER from **in-memory data only**:
 1. ✅ **JIRA Integration** (POST to MCP immediately) - highest priority, what team sees
-2. ✅ **Markdown Report** (generate & auto-open) - user-facing detailed analysis
+2. ✅ **HTML Report** (generate & auto-open) - user-facing detailed analysis
 3. ✅ **CLI Summary** (print to stdout) - immediate terminal feedback
 4. ⏳ **JSON File Save** (optional, non-blocking) - archival only
 5. ⏳ **Database Update** (optional, only if JSON saved) - audit trail if available
@@ -2269,7 +2269,7 @@ print("✅ Analysis complete - proceeding with report generation")
         "attempted": "<number of attempts>",
         "fallback_used": "<true|false>",
         "error": "<error message if failed>",
-        "note": "CRITICAL - always generates markdown, even if other steps fail"
+        "note": "CRITICAL - always generates html, even if other steps fail"
       },
       "step_7_jira_integration": {
         "status": "<success|failed|skipped_optional>",
@@ -2290,11 +2290,11 @@ print("✅ Analysis complete - proceeding with report generation")
 
 **IMPORTANT**: Do NOT put example/dummy data in the JSON. Every value must come from the actual analysis performed in Steps 0-5.
 
-#### 8c: Execute Reports in Priority Order (JIRA → Markdown → CLI → JSON → DB)
+#### 8c: Execute Reports in Priority Order (JIRA → HTML → CLI → JSON → DB)
 
 **⚠️ PREREQUISITE**: Analysis validation gate (8b-GATE) must pass before proceeding!
 
-**All reports follow consistent format** (see REPORT_FORMAT_GUIDE.md):
+**All reports follow consistent format** (see REPORT_FORMAT_GUIDE.html):
 - ✅ Same structure: metadata, summary, analysis, recommendations
 - ✅ No Cascade/Windsurf branding
 - ✅ PR number and reviewer in all reports
@@ -2342,7 +2342,7 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    **Error Handling**:
    - If JIRA post fails: Log error, continue to next step
    - jira_posted = success/failed flag
-   - Workflow does NOT stop, proceeds to markdown generation
+   - Workflow does NOT stop, proceeds to html generation
 
    **Report Format** (no Cascade branding):
    - Header: PR number, author, reviewer, branch, dates
@@ -2357,62 +2357,59 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
 
    ✅ INCLUDES CODE ANALYSIS: All findings with context
    ✅ INCLUDES IMPACT SUMMARY: Risk assessment, API impacts, recommendations
-   ✅ HIGHEST PRIORITY: Posted before Markdown, not dependent on JSON
+   ✅ HIGHEST PRIORITY: Posted before HTML, not dependent on JSON
    ✅ NO CASCADE BRANDING: Professional, tool-agnostic format
 
-4. 🟠 PRIORITY 2: GENERATE & AUTO-OPEN MARKDOWN REPORT (user-facing detailed analysis):
+4. 🟠 PRIORITY 2: GENERATE & AUTO-OPEN HTML REPORT (user-facing detailed analysis):
 
    **IMPLEMENTATION** (pass analysis data directly):
    ```python
-   from generate_markdown_report import generate_markdown_report, save_markdown_report
-   import subprocess
+   from generate_simple_html import generate_simple_html_report, save_simple_html_report
+   import webbrowser
    import os
 
-   # Generate PR-focused markdown from in-memory analysis_data
-   md_file = '.ai-review/pr-{pr_number}-data.md'
-   save_markdown_report(analysis_data, md_file)
+   # Generate simplified, PR-focused HTML from in-memory analysis_data
+   html_file = '.ai-review/pr-{pr_number}-data.html'
+   save_simple_html_report(analysis_data, html_file)
 
-   # Auto-open in editor (VS Code preferred, falls back to default editor)
+   # Auto-open in browser (cross-platform)
    try:
-       abs_path = os.path.abspath(md_file)
-       if os.name == 'nt':  # Windows
-           os.startfile(abs_path)
-       elif os.name == 'posix':  # Linux/macOS
-           subprocess.run(['xdg-open', abs_path], check=False)
-       print(f"✅ Markdown report generated and opened: {md_file}")
+       abs_path = os.path.abspath(html_file)
+       webbrowser.open(f'file://{abs_path}')
+       print(f"✅ HTML report generated and opened: {html_file}")
    except Exception as e:
-       print(f"⚠️ Could not auto-open editor, but markdown report exists: {md_file}")
-       print(f"   Please open manually with your editor")
+       print(f"⚠️ Could not auto-open browser, but HTML report exists: {html_file}")
+       print(f"   Please open manually in your browser")
    ```
 
    **Report Format** (consistent with JIRA and CLI):
    - Professional Bootstrap styling
    - Metadata section: PR number, author, reviewer, dates
    - Summary tables: files, issues, coverage
-   - Code Analysis: findings by severity with details (collapsible)
+   - Code Analysis: findings by severity with details (collapsible sections)
    - Spring Boot Validation: scores and issue breakdown
    - Test Coverage: percentages and gap analysis
    - API Impact: breaking changes, affected endpoints
    - Impact Analysis: risk assessment, affected layers
    - Recommendations: decision with actionable items
-   - Markdown formatting: clean, readable, shareable
-   - Portable: works in GitHub, GitLab, Bitbucket previews
+   - Interactive elements: collapsible sections, sortable tables
+   - Responsive design: works on desktop and mobile
 
-   ✅ GUARANTEED TO COMPLETE - even if generate-markdown-report.py fails, use fallback markdown
+   ✅ GUARANTEED TO COMPLETE - even if generate-simple-html.py fails, use fallback HTML
    ✅ INCLUDES CODE ANALYSIS: All findings, severity breakdown, affected files
    ✅ INCLUDES IMPACT SUMMARY: Risk level, affected APIs, test coverage
-   ✅ AUTO-OPENS: User sees report immediately in editor
+   ✅ AUTO-OPENS: User sees report immediately in browser
    ✅ CONSISTENT FORMAT: Same structure as JIRA and CLI reports
-   ✅ PORTABLE: Works in git platforms and text editors
+   ✅ NO BRANDING: Professional, tool-agnostic styling
 
-   **CRITICAL**: If generate-markdown-report.py fails:
-   - DO NOT skip markdown generation
-   - Generate minimal fallback markdown with code analysis data
-   - Include: findings list, severity breakdown, affected files list
+   **CRITICAL**: If generate-simple-html.py fails:
+   - DO NOT skip HTML generation
+   - Generate minimal fallback HTML with code analysis data
+   - Include: findings table, severity breakdown, affected files list
    - Include: impact analysis, risk level, execution status, metadata
-   - Output: .ai-review/pr-{pr_number}-data.md (fallback version)
+   - Output: .ai-review/pr-{pr_number}-data.html (fallback version)
 
-   Output: .ai-review/pr-{pr_number}-data.md (auto-opened in editor)
+   Output: .ai-review/pr-{pr_number}-data.html (auto-opened in browser)
 
 5. 🟡 PRIORITY 3: PRINT CLI SUMMARY (immediate terminal feedback):
 
@@ -2427,7 +2424,7 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    format_cli_summary(analysis_data)
    ```
 
-   **Report Format** (consistent with JIRA and Markdown):
+   **Report Format** (consistent with JIRA and HTML):
    - ANSI color support (Windows Terminal, Linux, macOS)
    - Metadata section: PR#, author, reviewer
    - File detection method and statistics
@@ -2443,14 +2440,14 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    ✅ INCLUDES CODE ANALYSIS: Issue counts by severity, top findings
    ✅ INCLUDES IMPACT SUMMARY: Risk level, affected components, next steps
    ✅ IMMEDIATE FEEDBACK: User sees summary in terminal right away
-   ✅ CONSISTENT FORMAT: Same structure as JIRA and Markdown
+   ✅ CONSISTENT FORMAT: Same structure as JIRA and HTML
    ✅ CROSS-PLATFORM: Works on Windows, Linux, macOS with color detection
 
    Output: Printed to stdout for immediate visibility
 
 6. 🟢 PRIORITY 4: SAVE JSON FILE (non-blocking — optional archival):
 
-   **ONLY AFTER JIRA, Markdown, and CLI are done**, attempt to save JSON:
+   **ONLY AFTER JIRA, HTML, and CLI are done**, attempt to save JSON:
    ```bash
    # Save JSON for archival (if this fails, all user-facing outputs already exist)
    python .windsurf/workflows/templates/json_saver.py --pr {pr_number} << 'EOF'
@@ -2470,7 +2467,7 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
 
    **Why save JSON last?**
    - ✅ JIRA already posted to MCP (team has the info)
-   - ✅ Markdown report already generated and opened (user has detailed analysis)
+   - ✅ HTML report already generated and opened (user has detailed analysis)
    - ✅ CLI summary already printed (user has feedback)
    - ✅ If JSON save fails: Zero impact on user-facing outputs
    - ✅ Cascade file creation issues don't block anything
@@ -2485,7 +2482,7 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
 
    **Files in .ai-review/ Root (Latest)**:
-   - .ai-review/pr-{pr_number}-data.md ← Markdown Report (ALWAYS created)
+   - .ai-review/pr-{pr_number}-data.html ← HTML Report (ALWAYS created)
    - .ai-review/pr-{pr_number}-data.json ← JSON file (created if save succeeds, optional)
 
 7. 🔵 PRIORITY 5: UPDATE DATABASE (optional, only if JSON exists):
@@ -2519,7 +2516,7 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
    - ❌ Do NOT stop workflow
    - ✅ Workflow continues to completion
    - Database update is best-effort, always optional
-   - All user-facing outputs (JIRA, Markdown, CLI) already exist
+   - All user-facing outputs (JIRA, HTML, CLI) already exist
 
 8. Update master index (for report tracking):
    python .windsurf/workflows/templates/report_manager.py {pr_number}
@@ -2533,7 +2530,7 @@ JSON is NOT required. Database update only happens if JSON saved successfully.
 
 ---
 
-#### 8d: Architecture: Priority-Based Execution (JIRA → Markdown → CLI → JSON → DB)
+#### 8d: Architecture: Priority-Based Execution (JIRA → HTML → CLI → JSON → DB)
 
 **PROBLEM SOLVED** ✅: Zero JSON dependency, Cascade-safe workflow
 
@@ -2543,7 +2540,7 @@ JSON File Write ❌ (fails in Cascade)
      ↓
 Read JSON ❌ (can't read)
      ↓
-Generate Markdown ❌ (depends on JSON)
+Generate HTML ❌ (depends on JSON)
 Generate JIRA ❌ (depends on JSON)
 Print CLI ❌ (depends on JSON)
 Update DB ❌ (all failed)
@@ -2562,12 +2559,12 @@ EXECUTE BY PRIORITY:
 4. SAVE JSON (optional, non-blocking archival)
 5. UPDATE DATABASE (optional, only if JSON saved)
 
-RESULT: Team has JIRA + User has Markdown + CLI output, even if JSON/DB fails ✓
+RESULT: Team has JIRA + User has HTML + CLI output, even if JSON/DB fails ✓
 ```
 
 **Why This Is Superior**:
 1. **JIRA Posted First** - Team sees analysis immediately via MCP
-2. **Markdown Generated & Opened** - User gets detailed report instantly
+2. **HTML Generated & Opened** - User gets detailed report instantly
 3. **CLI Summary Printed** - Immediate feedback in terminal
 4. **JSON Saved Last** - Optional archival, doesn't block anything
 5. **Database Updated Last** - Conditional on JSON success, best-effort
@@ -2578,7 +2575,7 @@ Step 8a: Build analysis_data in memory (single source of truth)
 
 Step 8c: Execute in PRIORITY ORDER:
   1. POST JIRA: format_jira_comment(analysis_data) → post to MCP
-  2. GEN MD: generate_markdown_report(analysis_data) → .md file + auto-open
+  2. GEN HTML: generate_simple_html_report(analysis_data) → .html file + auto-open
   3. PRINT CLI: format_cli_summary(analysis_data) → stdout
   4. SAVE JSON: json_saver.py(analysis_data) → .json (if succeeds)
   5. UPDATE DB: database_uploader.py(.json) → database (only if JSON saved)
@@ -2588,25 +2585,24 @@ Step 9: All critical outputs exist, unlock workflow
 
 **Guarantees**:
 - ✅ JIRA comment always posted (team sees it)
-- ✅ Markdown report always generated and opened (user sees it)
+- ✅ HTML report always generated and opened (user sees it)
 - ✅ CLI summary always printed (terminal feedback)
-- ✅ Even if JSON fails: User still has Markdown, team still has JIRA
+- ✅ Even if JSON fails: User still has HTML, team still has JIRA
 - ✅ Even if database fails: All user-facing outputs still exist
 - ✅ Cascade-compatible: Zero file I/O blocking critical path
 - ✅ Graceful degradation: Each component independent
 
-6. Open markdown report in editor automatically (handled in Python step 4):
+6. Open HTML report in browser automatically (handled in Python step 4):
 
-   The `generate_markdown_report.py` script handles cross-platform file opening:
-   - **Windows**: Uses `os.startfile()`
-   - **Linux/macOS**: Uses `subprocess.run(['xdg-open', ...])` or equivalent
+   The `generate-simple-html.py` script handles cross-platform browser opening:
+   - **All platforms**: Uses `webbrowser` module (built-in Python)
+   - Automatically opens default browser with `file://` URL
+   - Falls back gracefully if browser cannot be opened
 
-   No additional PowerShell/native command needed - Python subprocess handles it.
-
-   **If Python script fails**, the markdown report still exists at `.ai-review/pr-{pr_number}-data.md` for manual opening.
+   **If Python script fails**, the HTML report still exists at `.ai-review/pr-{pr_number}-data.html` for manual opening in browser.
 ```
 
-**If Python scripts fail**: Fall back to displaying the CLI summary inline from the JSON data. The markdown report is the primary deliverable.
+**If Python scripts fail**: Fall back to displaying the CLI summary inline from the JSON data. The HTML report is the primary deliverable.
 
 ---
 
@@ -2631,7 +2627,7 @@ try:
 finally:
   # Step 9 ALWAYS executes, regardless of above results
   python .windsurf/workflows/templates/workflow_lock.py \
-    .windsurf/workflows/pr-review-comprehensive.md \
+    .windsurf/workflows/pr-review-comprehensive.html \
     unlockfile
 
 Expected output:
@@ -2692,7 +2688,7 @@ GUARANTEE: This step ALWAYS executes, even if earlier steps failed or were parti
 .windsurf/workflows/
 ├── pr-review-comprehensive.md          # This workflow
 └── templates/
-    ├── generate_markdown_report.py      # Markdown report generator
+    ├── generate-simple-html.py          # HTML report generator
     ├── jira_formatter.py               # JIRA comment formatter
     ├── cli_formatter.py                # CLI output formatter
     ├── json_saver.py                   # JSON archival script
@@ -2700,7 +2696,7 @@ GUARANTEE: This step ALWAYS executes, even if earlier steps failed or were parti
     └── workflow_lock.py                # Workflow lock/unlock script
 
 .ai-review/                             # Generated per-run (gitignored)
-├── pr-{pr_number}-data.md              # Generated Markdown report
+├── pr-{pr_number}-data.html              # Generated HTML report
 ├── pr-{pr_number}-data.json            # Review data JSON (optional)
 └── index.json                          # Run history index
 ```
@@ -2859,7 +2855,7 @@ Solution:
 1. Verify file structure:
    ```
    .windsurf/workflows/
-   ├── pr-review-comprehensive.md
+   ├── pr-review-comprehensive.html
    └── templates/
        ├── generate-html.py
        ├── cli_formatter.py

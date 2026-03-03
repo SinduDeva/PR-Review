@@ -1890,17 +1890,18 @@ Deduplicate and prioritize by:
 4. LOW - Style, documentation
 ```
 
-#### 8b: Build Analysis Data in Memory & Generate Reports
+#### 8b: Build Analysis Data in Memory & Execute in Priority Order
 
-**🔴 CRITICAL - INDEPENDENT OF JSON FILE EXISTENCE**
+**🔴 CRITICAL - ZERO JSON DEPENDENCY FOR CORE FUNCTIONALITY**
 
-**Requirement**: Reports must be generated from **in-memory data** FIRST, then JSON file is saved LAST:
-- ✅ HTML Report (generate-html.py) - displays all findings, severity breakdown, impact analysis
-- ✅ JIRA Comment (jira_formatter.py) - includes code analysis findings and risk assessment
-- ✅ CLI Summary (cli_formatter.py) - shows issue counts, top findings, impact summary
-- ✅ JSON File (json_saver.py) - saves data LAST (non-blocking, optional)
+**Requirement**: Execute reports in PRIORITY ORDER from **in-memory data only**:
+1. ✅ **JIRA Integration** (POST to MCP immediately) - highest priority, what team sees
+2. ✅ **HTML Report** (generate & auto-open) - user-facing detailed analysis
+3. ✅ **CLI Summary** (print to stdout) - immediate terminal feedback
+4. ⏳ **JSON File Save** (optional, non-blocking) - archival only
+5. ⏳ **Database Update** (optional, only if JSON saved) - audit trail if available
 
-**KEY CHANGE**: If JSON file writing fails, reports are ALREADY GENERATED and available
+**KEY CHANGE**: JSON is NOT required for any user-facing functionality. Complete workflow even if JSON/database fails.
 
 **MANDATORY FIELDS FOR ALL REPORTS**:
 1. **Code Analysis Data** (from Steps 3-5):
@@ -2194,13 +2195,13 @@ Deduplicate and prioritize by:
 
 **IMPORTANT**: Do NOT put example/dummy data in the JSON. Every value must come from the actual analysis performed in Steps 0-5.
 
-#### 8c: Generate Reports from In-Memory Data (NOT dependent on JSON file)
+#### 8c: Execute Reports in Priority Order (JIRA → HTML → CLI → JSON → DB)
 
-**Actions** (execute these commands — do NOT skip):
+**Actions** (execute in THIS exact order — do NOT skip):
 
 ```
-⚠️ CRITICAL WORKFLOW CHANGE: Reports are generated BEFORE JSON file is saved
-This ensures reports exist even if JSON file writing fails in Cascade
+⚠️ CRITICAL WORKFLOW ORDER: Execute by priority, JIRA first, DB last
+JSON is NOT required. Database update only happens if JSON saved successfully.
 
 1. Ensure .ai-review/ directory exists:
    mkdir -p .ai-review   (or New-Item -ItemType Directory -Force .ai-review on Windows)
@@ -2214,30 +2215,56 @@ This ensures reports exist even if JSON file writing fails in Cascade
    - Keep latest reports in .ai-review/ root for easy access
    - Output: "✅ Archived: pr-{pr_number}-data.json → run-N/"
 
-3. GENERATE HTML REPORT ⭐ MANDATORY (uses in-memory data, NOT JSON file):
+3. 🔴 PRIORITY 1: POST JIRA COMMENT TO MCP (highest priority - what team sees):
 
-   **IMPLEMENTATION** (pass analysis data directly):
-   ```bash
-   python .windsurf/workflows/templates/generate-html.py \
-     --metadata '{metadata_json}' \
-     --findings '{findings_json}' \
-     --impact '{impact_analysis_json}' \
-     --files '{files_reviewed_json}' \
-     --api '{api_changes_json}'
+   **IMPLEMENTATION** (post to MCP immediately):
+   ```python
+   from jira_formatter import format_jira_comment
+   from bitbucket_client import post_jira_comment
+
+   # Format JIRA comment from in-memory analysis_data
+   jira_comment = format_jira_comment(analysis_data)
+
+   # Post to MCP (Bitbucket Cloud JIRA integration)
+   if analysis_data.get('jira_tickets'):
+       for ticket in analysis_data['jira_tickets']:
+           post_jira_comment(ticket, jira_comment)
+           print(f"✅ Posted to JIRA {ticket}")
+   else:
+       print("⚠️ No JIRA tickets found - skipping JIRA post")
+       jira_posted = False
    ```
 
-   OR pass complete analysis_data object:
+   **Error Handling**:
+   - If JIRA post fails: Log error, continue to next step
+   - jira_posted = success/failed flag
+   - Workflow does NOT stop, proceeds to HTML generation
+
+   ✅ INCLUDES CODE ANALYSIS: All findings with context
+   ✅ INCLUDES IMPACT SUMMARY: Risk assessment, API impacts, recommendations
+   ✅ HIGHEST PRIORITY: Posted before HTML, not dependent on JSON
+
+4. 🟠 PRIORITY 2: GENERATE & AUTO-OPEN HTML REPORT (user-facing detailed analysis):
+
+   **IMPLEMENTATION** (pass analysis data directly):
    ```python
-   # In workflow script, call directly:
    from generate_html import generate_html_report
+
+   # Generate HTML from in-memory analysis_data
    html_content = generate_html_report(analysis_data)
    with open('.ai-review/pr-{pr_number}-data.html', 'w') as f:
        f.write(html_content)
+
+   # Auto-open in browser
+   import webbrowser
+   webbrowser.open('.ai-review/pr-{pr_number}-data.html')
+   print("✅ HTML report generated and opened")
    ```
 
    ✅ GUARANTEED TO COMPLETE - even if generate-html.py fails, use fallback HTML
    ✅ INCLUDES CODE ANALYSIS: All findings, severity breakdown, affected files
    ✅ INCLUDES IMPACT SUMMARY: Risk level, affected APIs, test coverage
+   ✅ AUTO-OPENS: User sees report immediately without manual action
 
    **CRITICAL**: If generate-html.py fails:
    - DO NOT skip HTML generation
@@ -2246,76 +2273,89 @@ This ensures reports exist even if JSON file writing fails in Cascade
    - Include: impact analysis, risk level, execution status
    - Output: .ai-review/pr-{pr_number}-data.html (fallback version)
 
-   Output: .ai-review/pr-{pr_number}-data.html
+   Output: .ai-review/pr-{pr_number}-data.html (auto-opened in browser)
 
-4. GENERATE JIRA COMMENT FILE (from in-memory analysis_data):
-
-   **IMPLEMENTATION** (pass analysis data directly):
-   ```python
-   from jira_formatter import format_jira_comment
-   jira_comment = format_jira_comment(analysis_data)
-   with open('.ai-review/pr-{pr_number}-jira-comment.txt', 'w') as f:
-       f.write(jira_comment)
-   ```
-
-   ✅ INCLUDES CODE ANALYSIS: All findings with context
-   ✅ INCLUDES IMPACT SUMMARY: Risk assessment, API impacts, recommendations
-
-   Output: .ai-review/pr-{pr_number}-jira-comment.txt
-
-5. PRINT CLI SUMMARY (from in-memory analysis_data):
+5. 🟡 PRIORITY 3: PRINT CLI SUMMARY (immediate terminal feedback):
 
    **IMPLEMENTATION** (pass analysis data directly):
    ```python
    from cli_formatter import format_cli_summary
+
    cli_output = format_cli_summary(analysis_data)
    print(cli_output)
    ```
 
    ✅ INCLUDES CODE ANALYSIS: Issue counts by severity, top findings
    ✅ INCLUDES IMPACT SUMMARY: Risk level, affected components, next steps
+   ✅ IMMEDIATE FEEDBACK: User sees summary in terminal right away
 
    Output: Printed to stdout for immediate visibility
 
-6. SAVE JSON FILE LAST (non-blocking — if fails, reports already exist):
+6. 🟢 PRIORITY 4: SAVE JSON FILE (non-blocking — optional archival):
 
-   **ONLY AFTER reports are generated**, save JSON for archival:
+   **ONLY AFTER JIRA, HTML, and CLI are done**, attempt to save JSON:
    ```bash
+   # Save JSON for archival (if this fails, all user-facing outputs already exist)
    python .windsurf/workflows/templates/json_saver.py --pr {pr_number} << 'EOF'
    {complete analysis_data object}
    EOF
+
+   # Check success
+   if [ $? -eq 0 ]; then
+       json_saved = true
+       echo "✅ JSON saved successfully"
+   else
+       json_saved = false
+       echo "⚠️ JSON save failed - but all reports already exist"
+   fi
    ```
 
    **Why save JSON last?**
-   - ✅ Reports already exist in .ai-review/
-   - ✅ If JSON save fails: No impact on reports
-   - ✅ Cascade file creation issues don't block reports
-   - ✅ User gets complete analysis regardless
+   - ✅ JIRA already posted to MCP (team has the info)
+   - ✅ HTML report already generated and opened (user has detailed analysis)
+   - ✅ CLI summary already printed (user has feedback)
+   - ✅ If JSON save fails: Zero impact on user-facing outputs
+   - ✅ Cascade file creation issues don't block anything
 
    **Error Handling**:
    - If json_saver.py fails: Log warning, continue
-   - Set flag: json_file_created = (exit code == 0)
-   - Reports already exist, so workflow proceeds to Step 9
+   - Set flag: json_saved = (exit code == 0)
+   - Workflow proceeds to optional database update
 
    ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
 
-   **Purpose**: Allow workflow to be run multiple times on the same PR without conflicts.
-
    **Files in .ai-review/ Root (Latest)**:
    - .ai-review/pr-{pr_number}-data.html ← HTML Report (ALWAYS created)
-   - .ai-review/pr-{pr_number}-jira-comment.txt ← JIRA Comment (ALWAYS created)
-   - .ai-review/pr-{pr_number}-data.json ← JSON file (created if save succeeds)
+   - .ai-review/pr-{pr_number}-data.json ← JSON file (created if save succeeds, optional)
 
-   **Key Difference**: JSON is optional, reports are mandatory
+7. 🔵 PRIORITY 5: UPDATE DATABASE (optional, only if JSON exists):
 
-   **Use Cases for Re-Execution**:
-   1. **PR updated with new commits** → Re-run to analyze latest changes
-   2. **Want fresh analysis** → Re-run to get current state
-   3. **Reports corrupted** → Re-run to regenerate
-   4. **Testing workflow** → Re-run as many times as needed
+   **ONLY EXECUTE IF json_saved == true**:
+   ```bash
+   if [ "$json_saved" = true ]; then
+       python .windsurf/workflows/templates/database_uploader.py \
+         .ai-review/pr-{pr_number}-data.json
 
-7. Update master index (for report tracking):
-   python .windsurf/workflows/templates/report_manager.py {pr_number} analysis_data
+       echo "✅ Database updated with audit trail"
+   else
+       echo "⚠️ Database update skipped - JSON not available"
+       # Workflow continues, database update is optional
+   fi
+   ```
+
+   **Why database is optional?**
+   - ✅ Audit trail is nice-to-have, not critical
+   - ✅ If database unavailable: All reports already exist and delivered
+   - ✅ Database update depends on JSON, so only runs if JSON successful
+   - ✅ Skipping DB update doesn't affect user-facing functionality
+
+   **Error Handling**:
+   - If database_uploader fails: Log warning, continue
+   - Workflow does NOT stop
+   - Database update is best-effort
+
+8. Update master index (for report tracking):
+   python .windsurf/workflows/templates/report_manager.py {pr_number}
 
    This will:
    - Update .ai-review/index.json with current run metadata
@@ -2326,55 +2366,67 @@ This ensures reports exist even if JSON file writing fails in Cascade
 
 ---
 
-#### 8d: Architecture: Reports Independent of JSON Files
+#### 8d: Architecture: Priority-Based Execution (JIRA → HTML → CLI → JSON → DB)
 
-**PROBLEM SOLVED** ✅: Cascade JSON file writing issues
+**PROBLEM SOLVED** ✅: Zero JSON dependency, Cascade-safe workflow
 
-**OLD ARCHITECTURE** (broken in Cascade):
+**OLD ARCHITECTURE** (broken):
 ```
-Workflow Data → JSON File Write → Read JSON → Generate HTML → Generate JIRA → Print CLI
-                        ↓
-                   If this fails, all reports fail ❌
-```
+JSON File Write ❌ (fails in Cascade)
+     ↓
+Read JSON ❌ (can't read)
+     ↓
+Generate HTML ❌ (depends on JSON)
+Generate JIRA ❌ (depends on JSON)
+Print CLI ❌ (depends on JSON)
+Update DB ❌ (all failed)
 
-**NEW ARCHITECTURE** (Cascade-safe):
-```
-Workflow Data → Generate HTML (in-memory) ✅
-            → Generate JIRA (in-memory) ✅
-            → Print CLI (in-memory) ✅
-            → Save JSON File (non-blocking) ✅
-                        ↓
-            If JSON save fails: Reports already exist ✓
+RESULT: Everything fails ❌
 ```
 
-**Why This Works**:
-1. **Analysis data never leaves memory** during report generation
-2. **Reports created in-memory first** (HTML, JIRA, CLI)
-3. **JSON saved last** (for archival, optional)
-4. **If JSON write fails**: Reports are already on disk, workflow succeeds
-5. **Cascade-safe**: No dependency on file I/O success
+**NEW ARCHITECTURE** (Priority-Based, Zero JSON Dependency):
+```
+Build analysis_data in memory ✓
+
+EXECUTE BY PRIORITY:
+1. POST TO JIRA VIA MCP ✅ (team gets info immediately)
+2. GENERATE & OPEN HTML ✅ (user sees detailed report)
+3. PRINT CLI SUMMARY ✅ (immediate terminal feedback)
+4. SAVE JSON (optional, non-blocking archival)
+5. UPDATE DATABASE (optional, only if JSON saved)
+
+RESULT: Team has JIRA + User has HTML + CLI output, even if JSON/DB fails ✓
+```
+
+**Why This Is Superior**:
+1. **JIRA Posted First** - Team sees analysis immediately via MCP
+2. **HTML Generated & Opened** - User gets detailed report instantly
+3. **CLI Summary Printed** - Immediate feedback in terminal
+4. **JSON Saved Last** - Optional archival, doesn't block anything
+5. **Database Updated Last** - Conditional on JSON success, best-effort
 
 **Data Flow**:
 ```
-Step 8a: Build analysis_data in memory
-  ├─ metadata, findings, impact_analysis, api_changes
-  └─ files_reviewed, recommendations, test_coverage
+Step 8a: Build analysis_data in memory (single source of truth)
 
-Step 8c: Generate reports from analysis_data
-  ├─ generate_html_report(analysis_data) → .html file
-  ├─ format_jira_comment(analysis_data) → .txt file
-  ├─ format_cli_summary(analysis_data) → stdout
-  └─ json_saver.py(analysis_data) → .json file (non-blocking)
+Step 8c: Execute in PRIORITY ORDER:
+  1. POST JIRA: format_jira_comment(analysis_data) → post to MCP
+  2. GEN HTML: generate_html_report(analysis_data) → .html file + auto-open
+  3. PRINT CLI: format_cli_summary(analysis_data) → stdout
+  4. SAVE JSON: json_saver.py(analysis_data) → .json (if succeeds)
+  5. UPDATE DB: database_uploader.py(.json) → database (only if JSON saved)
 
-Step 9: All reports exist, unlock workflow
+Step 9: All critical outputs exist, unlock workflow
 ```
 
-**Benefits**:
-- ✅ Reports always generated (even if JSON fails)
-- ✅ Cascade-compatible (no file creation blocking)
-- ✅ User gets complete analysis in all formats
-- ✅ JSON is optional archival, not critical
-- ✅ Faster execution (reports created once, in parallel)
+**Guarantees**:
+- ✅ JIRA comment always posted (team sees it)
+- ✅ HTML report always generated and opened (user sees it)
+- ✅ CLI summary always printed (terminal feedback)
+- ✅ Even if JSON fails: User still has HTML, team still has JIRA
+- ✅ Even if database fails: All user-facing outputs still exist
+- ✅ Cascade-compatible: Zero file I/O blocking critical path
+- ✅ Graceful degradation: Each component independent
 
 6. Open HTML report in browser automatically:
 

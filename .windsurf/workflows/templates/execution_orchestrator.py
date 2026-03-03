@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Execution Orchestrator - Correct Output Generation Order
+Execution Orchestrator - Report Generation in Correct Order
 
 EXECUTION ORDER:
-  1. JIRA Update (from in-memory data) - CRITICAL
-  2. Database Update (from in-memory data) - CRITICAL
-  3. CLI Generate - SECONDARY
-  4. HTML Generate - OPTIONAL
+  1. Validate Analysis Complete (8b-GATE) - CRITICAL
+  2. JIRA Upload (with complete analysis) - CRITICAL
+  3. HTML Report (auto-open) - CRITICAL
+  4. CLI Summary - SECONDARY
 
-This ensures JIRA and DB are updated before any local output generation.
+This ensures analysis is complete before ANY reports are generated.
 
 Usage:
     python execution_orchestrator.py analysis.json --pr 123
@@ -31,7 +31,7 @@ except ImportError:
 
 
 class ExecutionOrchestrator:
-    """Manages execution order: JIRA → DB → CLI → JSON → HTML"""
+    """Manages execution order: Validate → JIRA → HTML (auto-open) → CLI"""
 
     def __init__(self, analysis_data: Dict[str, Any], pr_number: int = None, verbose: bool = True):
         self.analysis_data = analysis_data
@@ -46,10 +46,10 @@ class ExecutionOrchestrator:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.phases = {
-            'jira': {'success': False, 'message': '', 'critical': False},  # Non-blocking output
-            'database': {'success': False, 'message': '', 'critical': True},
+            'validation': {'success': False, 'message': '', 'critical': True},
+            'jira': {'success': False, 'message': '', 'critical': True},
+            'html': {'success': False, 'message': '', 'critical': True},
             'cli': {'success': False, 'message': '', 'critical': False},
-            'html': {'success': False, 'message': '', 'critical': False},
         }
 
     def _detect_pr_number(self, cli_pr: Optional[int] = None) -> Optional[int]:
@@ -95,7 +95,51 @@ class ExecutionOrchestrator:
         print(f"{prefix} {msg}")
 
     # ============================================================================
-    # PHASE 1: JIRA UPDATE (CRITICAL - Happens First)
+    # PHASE 0: VALIDATE ANALYSIS COMPLETE (CRITICAL - Gate before any reports)
+    # ============================================================================
+
+    def phase_0_validate_analysis(self) -> bool:
+        """PHASE 0: Validate all analysis is complete before generating reports"""
+        try:
+            self.log("\n[PHASE 0/3] VALIDATING ANALYSIS COMPLETION...", "INFO")
+
+            # Import validator
+            try:
+                from analysis_validator import validate_analysis_completion, get_validation_report
+            except ImportError:
+                msg = "analysis_validator.py not found - skipping validation"
+                self.log(f"⚠️  {msg}", "WARNING")
+                self.phases['validation']['message'] = msg
+                return True  # Allow to continue if validator missing
+
+            # Validate
+            is_complete, missing_fields, warnings = validate_analysis_completion(self.analysis_data)
+
+            # Print report
+            report = get_validation_report(is_complete, missing_fields, warnings)
+            self.log(report, "INFO")
+
+            if not is_complete:
+                msg = f"Analysis incomplete - missing {len(missing_fields)} required fields"
+                self.log(f"❌ {msg}", "ERROR")
+                self.phases['validation']['message'] = msg
+                return False  # Block all report generation
+
+            # Success
+            msg = "Analysis validation passed - proceeding with reports"
+            self.log(f"✅ {msg}", "SUCCESS")
+            self.phases['validation']['success'] = True
+            self.phases['validation']['message'] = msg
+            return True
+
+        except Exception as e:
+            msg = f"Validation error: {e}"
+            self.log(f"⚠️  {msg}", "WARNING")
+            self.phases['validation']['message'] = msg
+            return True  # Allow to continue on validation errors
+
+    # ============================================================================
+    # PHASE 1: JIRA UPDATE (CRITICAL - Happens First after validation)
     # ============================================================================
 
     def _format_jira_plain_text(self) -> str:
@@ -349,45 +393,56 @@ class ExecutionOrchestrator:
             return True  # Non-blocking: return True so workflow continues
 
     # ============================================================================
-    # PHASE 2: DATABASE UPDATE (CRITICAL - Happens Second)
+    # PHASE 2: HTML GENERATE (CRITICAL - Auto-open)
     # ============================================================================
 
-    def phase_2_update_database(self) -> bool:
-        """PHASE 2: Update Database (CRITICAL - Happens Second)"""
+    def phase_2_generate_html(self) -> bool:
+        """PHASE 2: Generate HTML (CRITICAL - Auto-open)"""
         try:
-            self.log("\n[PHASE 2/4] UPDATING DATABASE (CRITICAL)...", "INFO")
+            self.log("\n[PHASE 2/3] GENERATING HTML REPORT (CRITICAL)...", "INFO")
 
-            uploader = Path(".windsurf/workflows/templates/database_uploader.py")
-            if not uploader.exists():
-                msg = "database_uploader.py not found"
+            gen = Path(".windsurf/workflows/templates/generate-simple-html.py")
+            if not gen.exists():
+                msg = "generate-simple-html.py not found"
                 self.log(f"⚠️  {msg}", "WARNING")
-                self.phases['database']['message'] = msg
+                self.phases['html']['message'] = msg
                 return False
 
             # Pass data via stdin (no JSON files)
             json_data = json.dumps(self.analysis_data, indent=2, default=str)
 
             result = subprocess.run(
-                [sys.executable, str(uploader)],
+                [sys.executable, str(gen)],
                 input=json_data,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=30
             )
 
-            if result.returncode == 0:
-                msg = "Database update successful"
+            html_file = self.output_dir / f"pr-{self.pr_number}-data.html"
+
+            if result.returncode == 0 and html_file.exists():
+                size = html_file.stat().st_size
+                msg = f"HTML generated: {html_file} ({size} bytes)"
                 self.log(f"✅ {msg}", "SUCCESS")
-                self.phases['database']['success'] = True
-                self.phases['database']['message'] = msg
+                self.phases['html']['success'] = True
+                self.phases['html']['message'] = msg
+
+                # Auto-open HTML in browser
+                from generate_simple_html import open_html_in_browser
+                try:
+                    open_html_in_browser(str(html_file))
+                except:
+                    pass  # Silent fail on auto-open
+
                 return True
             else:
-                raise Exception(result.stderr or "Upload failed")
+                raise Exception(result.stderr or "Generation failed")
 
         except Exception as e:
-            msg = f"Database update failed: {e}"
+            msg = f"HTML generation failed: {e}"
             self.log(f"❌ {msg}", "ERROR")
-            self.phases['database']['message'] = msg
+            self.phases['html']['message'] = msg
             return False
 
     # ============================================================================
@@ -397,7 +452,7 @@ class ExecutionOrchestrator:
     def phase_3_generate_cli(self) -> bool:
         """PHASE 3: Generate CLI output (SECONDARY - Can fail without blocking)"""
         try:
-            self.log("\n[PHASE 3/4] GENERATING CLI OUTPUT (SECONDARY)...", "INFO")
+            self.log("\n[PHASE 3/3] GENERATING CLI OUTPUT (SECONDARY)...", "INFO")
 
             cli_formatter = Path(".windsurf/workflows/templates/cli_formatter.py")
             if not cli_formatter.exists():
@@ -442,50 +497,6 @@ class ExecutionOrchestrator:
             self.phases['cli']['message'] = msg
             return False
 
-    # ============================================================================
-    # PHASE 4: HTML GENERATE (OPTIONAL - Can fail without blocking)
-    # ============================================================================
-
-    def phase_4_generate_html(self) -> bool:
-        """PHASE 4: Generate HTML (OPTIONAL - Can fail without blocking)"""
-        try:
-            self.log("\n[PHASE 4/4] GENERATING HTML (OPTIONAL)...", "INFO")
-
-            gen = Path(".windsurf/workflows/templates/generate-simple-html.py")
-            if not gen.exists():
-                msg = "generate-simple-html.py not found"
-                self.log(f"⚠️  {msg}", "WARNING")
-                self.phases['html']['message'] = msg
-                return False
-
-            # Pass data via stdin (no JSON files)
-            json_data = json.dumps(self.analysis_data, indent=2, default=str)
-
-            result = subprocess.run(
-                [sys.executable, str(gen)],
-                input=json_data,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            html_file = self.output_dir / f"pr-{self.pr_number}-data.html"
-
-            if result.returncode == 0 and html_file.exists():
-                size = html_file.stat().st_size
-                msg = f"HTML generated: {html_file} ({size} bytes)"
-                self.log(f"✅ {msg}", "SUCCESS")
-                self.phases['html']['success'] = True
-                self.phases['html']['message'] = msg
-                return True
-            else:
-                raise Exception(result.stderr or "Generation failed")
-
-        except Exception as e:
-            msg = f"HTML generation failed: {e}"
-            self.log(f"⚠️  {msg}", "WARNING")
-            self.phases['html']['message'] = msg
-            return False
 
     # ============================================================================
     # ORCHESTRATION
@@ -494,60 +505,57 @@ class ExecutionOrchestrator:
     def execute(self) -> bool:
         """Execute in correct order and return success status"""
         self.log("\n" + "=" * 80, "INFO")
-        self.log("EXECUTION ORCHESTRATOR - CORRECT ORDER", "INFO")
+        self.log("EXECUTION ORCHESTRATOR - REPORT GENERATION", "INFO")
         self.log("=" * 80, "INFO")
 
-        # PHASE 1: JIRA (CRITICAL) - Post to external system first
+        # PHASE 0: VALIDATE (CRITICAL) - Gate before any reports
+        validation_ok = self.phase_0_validate_analysis()
+        if not validation_ok:
+            self.log("\n❌ ANALYSIS VALIDATION FAILED - Blocking all reports", "ERROR")
+            return False
+
+        # PHASE 1: JIRA (CRITICAL) - Post to JIRA with complete analysis
         jira_ok = self.phase_1_update_jira()
 
-        # PHASE 2: Database (CRITICAL) - Save to database second
-        db_ok = self.phase_2_update_database()
+        # PHASE 2: HTML (CRITICAL) - Auto-open HTML report
+        html_ok = self.phase_2_generate_html()
 
-        # PHASE 3: CLI (SECONDARY) - Generate CLI output third
+        # PHASE 3: CLI (SECONDARY) - Generate CLI summary
         cli_ok = self.phase_3_generate_cli()
 
-        # PHASE 4: HTML (OPTIONAL - can fail)
-        html_ok = self.phase_4_generate_html()
-
         # Print summary
-        self._print_summary(jira_ok, db_ok, cli_ok, html_ok)
+        self._print_summary(validation_ok, jira_ok, html_ok, cli_ok)
 
-        # Return success if database succeeded (JIRA is non-blocking)
-        # JIRA failure is logged but doesn't fail the workflow
-        return db_ok
+        # Return success if JIRA and HTML both succeeded
+        # CLI failure is non-blocking
+        return jira_ok and html_ok
 
-    def _print_summary(self, jira_ok: bool, db_ok: bool, cli_ok: bool, html_ok: bool):
+    def _print_summary(self, validation_ok: bool, jira_ok: bool, html_ok: bool, cli_ok: bool):
         """Print execution summary"""
         self.log("\n" + "=" * 80, "INFO")
         self.log("EXECUTION SUMMARY", "INFO")
         self.log("=" * 80, "INFO")
         self.log("")
 
+        # Validation phase
+        self.log("VALIDATION:", "INFO")
+        self.log(f"  {'✅' if validation_ok else '❌'} Analysis Complete: {self.phases['validation']['message']}")
+
         # Critical phases
-        self.log("CRITICAL PHASES:", "INFO")
-        self.log(f"  {'✅' if jira_ok else '❌'} JIRA Update: {self.phases['jira']['message']}")
-        self.log(f"  {'✅' if db_ok else '❌'} Database Update: {self.phases['database']['message']}")
+        self.log("\nCRITICAL PHASES:", "INFO")
+        self.log(f"  {'✅' if jira_ok else '❌'} JIRA Upload: {self.phases['jira']['message']}")
+        self.log(f"  {'✅' if html_ok else '❌'} HTML Report: {self.phases['html']['message']}")
 
         # Secondary phases
         self.log("\nSECONDARY PHASES:", "INFO")
-        self.log(f"  {'✅' if cli_ok else '⚠️'} CLI Generate: {self.phases['cli']['message']}")
-
-        # Optional phases
-        self.log("\nOPTIONAL PHASES:", "INFO")
-        self.log(f"  {'✅' if html_ok else '⚠️'} HTML Generate: {self.phases['html']['message']}")
+        self.log(f"  {'✅' if cli_ok else '⚠️'} CLI Summary: {self.phases['cli']['message']}")
 
         self.log("\n" + "-" * 80, "INFO")
 
-        critical_ok = jira_ok and db_ok
-        if critical_ok:
-            self.log("✅ CRITICAL PHASES SUCCESSFUL - Workflow can continue", "SUCCESS")
+        if validation_ok and jira_ok and html_ok:
+            self.log("✅ ALL CRITICAL PHASES SUCCESSFUL", "SUCCESS")
         else:
-            self.log("❌ CRITICAL PHASES FAILED - Workflow should stop", "ERROR")
-
-        if html_ok:
-            self.log("✅ HTML report generated successfully", "SUCCESS")
-        else:
-            self.log("⚠️  HTML report generation failed (non-critical)", "WARNING")
+            self.log("❌ CRITICAL PHASES FAILED", "ERROR")
 
         self.log("\n" + "=" * 80 + "\n", "INFO")
 

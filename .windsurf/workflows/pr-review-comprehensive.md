@@ -2299,41 +2299,87 @@ print("✅ Analysis complete - proceeding with report generation")
 **Actions** (execute in THIS exact order — do NOT skip):
 
 ```
-STEP 1: VALIDATE ALL ANALYSIS IS COMPLETE (8b-GATE)
+STEP 1: VERIFY ANALYSIS RESULTS ARE AVAILABLE (8b-CHECK)
 ========================================================
 
-From aggregated analysis data (all findings from Steps 4-5):
-- Verify: metadata.pr_number exists
-- Verify: metadata.author exists
-- Verify: summary has all fields (files_changed, critical_issues, etc.)
-- Verify: findings array exists (can be empty)
-- Verify: overall_recommendation.decision is set
-- Verify: impact_analysis.summary exists
+Verify that steps 0-5 completed and captured analysis results:
+- Check: PR number was detected
+- Check: PR author was identified
+- Check: Files were analyzed
+- Check: Code findings were generated
+- Check: Impact analysis was completed
 
-If validation FAILS:
-  → Print: "❌ ANALYSIS INCOMPLETE - Cannot generate reports"
-  → List missing fields
-  → Block report generation
+Output:
+- ✅ "Analysis complete - proceeding with report generation"
+- ⚠️ "Analysis incomplete - generating reports with available data"
 
-If validation PASSES:
-  → Continue to JIRA generation
+Note: Reports will be generated regardless, using available data.
+If analysis is missing, reports will note that certain sections are incomplete.
 
 
 STEP 2: GENERATE JIRA COMMENT (CRITICAL - MUST COMPLETE)
 =========================================================
 
-Call the Python script to handle JIRA:
+Generate JIRA comment from analysis results via prompt:
 
-  python .windsurf/workflows/templates/execution_orchestrator.py \
-    --pr {pr_number} \
-    --phase jira
+```
+Based on all analysis from Steps 0-5, generate a JIRA comment with:
 
-This will:
-  1. Format complete analysis as plain text (no JSON files)
-  2. Include: findings, impact analysis, recommendations
-  3. Save to: .ai-review/pr-{pr_number}-jira-comment.txt
-  4. Attempt to post to JIRA via MCP (non-blocking if fails)
-  5. Log success/failure
+HEADER:
+- PR #{pr_number}: {pr_title}
+- Author: {author}
+- Branch: {source_branch} → {target_branch}
+
+SUMMARY:
+- Files analyzed: {files_validated}
+- Issues by severity: {critical} Critical, {high} High, {medium} Medium, {low} Low
+
+CODE FINDINGS:
+- List all findings grouped by severity (CRITICAL first, then HIGH, MEDIUM, LOW)
+- For each finding: Title, File, Line, Type, Description, Impact, Fix
+
+SPRING BOOT VALIDATION:
+- Architecture score and status
+- Security score and status
+- Performance score and status
+- Transaction Management score and status
+
+TEST COVERAGE:
+- Overall coverage percentage
+- Coverage by type (Unit, Integration)
+- Coverage gaps and missing tests
+
+API CHANGES:
+- List breaking changes
+- List non-breaking changes
+- List new endpoints
+
+IMPACT ANALYSIS:
+- Risk level (HIGH/MEDIUM/LOW)
+- Affected APIs
+- Affected components
+- Dependency impact summary
+
+RECOMMENDATIONS:
+- Overall decision: APPROVE / REQUEST_CHANGES / BLOCK
+- Reason/justification
+- Must-fix items
+- Should-fix items
+- Action items
+
+POSITIVE OBSERVATIONS:
+- PR strengths
+- Best practices followed
+- Good patterns used
+
+AI SUMMARY:
+- Overall summary of changes and impacts
+- Key takeaways
+
+Output as plain text to: .ai-review/pr-{pr_number}-jira-comment.txt
+```
+
+Then post to JIRA (non-blocking if fails).
 
 ✅ MUST COMPLETE - Team sees analysis via JIRA
 
@@ -2341,18 +2387,46 @@ This will:
 STEP 3: GENERATE & AUTO-OPEN HTML REPORT (CRITICAL - MUST COMPLETE)
 ====================================================================
 
-Call the Python script to handle HTML:
+Generate interactive HTML report from analysis via prompt:
 
-  python .windsurf/workflows/templates/execution_orchestrator.py \
-    --pr {pr_number} \
-    --phase html
+```
+Generate professional HTML report from analysis with:
 
-This will:
-  1. Generate HTML from in-memory analysis data
-  2. Include: all findings, impact analysis, Spring Boot validation, test coverage
-  3. Save to: .ai-review/pr-{pr_number}-data.html
-  4. AUTO-OPEN in default browser
-  5. Log success/failure
+HTML STRUCTURE:
+1. Header section: PR title, author, reviewer, date, metrics
+2. Summary metrics: Files analyzed, issues by severity count
+3. Recommendation box: Decision (APPROVE/REQUEST_CHANGES/BLOCK) with color coding
+4. Code Review section: Findings grouped by file, expandable/collapsible
+   - Each file is collapsible
+   - Shows all issues related to that file when expanded
+   - Issues colored by severity (red=critical, orange=high, yellow=medium, blue=low)
+5. Spring Boot Validation: Score table with status for each category
+6. Test Coverage: Coverage percentages and gaps
+7. API Changes: Breaking/non-breaking/new endpoint counts
+8. Impact Analysis: Risk level, affected APIs, affected components
+9. Positive Observations: Strengths and best practices
+10. AI Summary: Overall summary and key takeaways
+11. Execution Status: Validation results and warnings
+
+CSS:
+- Professional styling with gradients
+- Responsive design (mobile-friendly)
+- Severity badge colors: #d32f2f (critical), #ff6f00 (high), #fbc02d (medium), #1976d2 (low)
+- Collapsible sections with smooth transitions
+
+JavaScript:
+- Click file header to toggle content visibility
+- Smooth animations for expand/collapse
+- No external dependencies
+
+Output to: .ai-review/pr-{pr_number}-data.html
+
+Then auto-open in browser:
+- Windows: Use start command or explorer
+- macOS: Use open command
+- Linux: Use xdg-open or available browser
+- Cascade IDE: Print file:// URL and attempt webbrowser.open()
+```
 
 ✅ MUST COMPLETE - User sees detailed report in browser
 
@@ -2360,17 +2434,30 @@ This will:
 STEP 4: GENERATE CLI SUMMARY (SECONDARY - Non-blocking)
 =========================================================
 
-Call the Python script to handle CLI:
+Print CLI summary to console via prompt:
 
-  python .windsurf/workflows/templates/execution_orchestrator.py \
-    --pr {pr_number} \
-    --phase cli
+```
+Generate terminal-friendly summary with:
 
-This will:
-  1. Print CLI summary to stdout
-  2. Save to: .ai-review/pr-{pr_number}-cli-output.txt
-  3. Include: issue counts, findings, recommendations
-  4. Log success/failure
+HEADER:
+- PR #{pr_number}: {pr_title}
+- Metrics: {files_validated} files, {critical}/{high}/{medium}/{low} issues
+
+CRITICAL ISSUES (if any):
+- List top 3 critical findings
+- Format: [FILE:LINE] Title - Description
+
+RECOMMENDATION:
+- Decision: {APPROVE|REQUEST_CHANGES|BLOCK}
+- Reason: {justification}
+
+NEXT STEPS:
+- Must-fix items
+- Should-fix items
+
+Output to: .ai-review/pr-{pr_number}-cli-output.txt
+Also print to console for immediate feedback.
+```
 
 ✅ OPTIONAL - User gets terminal feedback (can fail without blocking)
 

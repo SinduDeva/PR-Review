@@ -435,27 +435,55 @@ PRIMARY METHOD:
    - Use from MCP tools context (NOT from git URL parsing)
    → Store: workspace, repo_slug
 
-3. Query Bitbucket for OPEN PRs (PRIMARY):
-   Try:
-     Call: mcp1_getPullRequests(
-       workspace="{workspace}",
-       repo_slug="{repo_slug}",
-       state="OPEN"
-     )
-   Catch Error or No Results:
-     Log: "Primary PR detection failed, using fallback method"
-     Proceed to FALLBACK METHOD
+3. Query Bitbucket for OPEN PRs with PAGINATION (PRIMARY):
+   Initialize pagination:
+     page = 1
+     pageSize = 5
+     max_pages = 20
+     found_pr = None
 
-4. Filter by source branch:
-   For each PR in response:
-   - Check: PR.source.branch.name == current_branch
-   - Check: PR.state == "OPEN"
-   → Filter result: PRs matching current branch
+   Loop until PR found or max pages reached:
+     Try:
+       Call: mcp1_getPullRequests(
+         workspace="{workspace}",
+         repo_slug="{repo_slug}",
+         state="OPEN",
+         page={page},
+         pageSize={pageSize}
+       )
 
-   If matches found:
-     - If exactly 1 PR: Use it → Extract PR number → Continue to Step 1
-     - If multiple PRs: Sort by created_on (descending) → Use most recent → Continue to Step 1
-     - Record in execution_status: status = "success", fallback_used = false
+       If result is empty:
+         Log: "No more pages available"
+         Break loop
+
+       For each PR in response:
+         - Check: PR.source.branch.name == current_branch
+         - Check: PR.state == "OPEN"
+
+         If matches:
+           → found_pr = PR
+           → Extract PR number
+           → Break inner loop
+           → Break outer loop
+
+       If found_pr is None:
+         Increment page
+         Continue to next page
+         Log: "Checking page {page}..."
+
+     Catch Error:
+       Log: "Error fetching page {page}: {error}"
+       Break loop
+
+   After pagination loop:
+     If found_pr found:
+       → Extract PR number → Record in execution_status
+       → Record: status = "success", fallback_used = false, pages_checked = {page}
+       → Continue to Step 1
+
+     Else (no PR found in any page):
+       Log: "No matching PR found in {page} pages (fetched {page * pageSize} PRs)"
+       → Proceed to FALLBACK METHOD
 
 FALLBACK METHOD 1 - Bitbucket API (if Primary fails):
 5. Get PR directly by attempting all branches:

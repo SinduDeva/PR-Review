@@ -1478,11 +1478,34 @@ Function: deduplicate_by_path(files)
 
 ---
 
-### Step 4: Parallel Deep Analysis (PR Changed Files Only)
+### Step 4: SEQUENTIAL Deep Analysis (PR Changed Files Only)
 
 **Goal**: Conduct comprehensive code review on ONLY files changed in this PR
 
-**CRITICAL**: Validate only non-test files (Java, XML, YAML, SQL, properties)
+**CRITICAL**: Execute sub-steps SEQUENTIALLY (4a → 4b → 4c → 4d → 4e → 4f → 4g)
+- Each sub-step COMPLETES and SAVES before next starts
+- Explicit handoff between each step
+- No parallel execution - maintain data integrity
+- Validate only non-test files (Java, XML, YAML, SQL, properties)
+
+**Step 4 Flow**:
+```
+4a: Java Analysis  ✓ SAVE java_issues
+         ↓ (wait for completion)
+4b: XML Analysis   ✓ SAVE xml_issues
+         ↓ (wait for completion)
+4c: YAML Analysis  ✓ SAVE yaml_issues
+         ↓ (wait for completion)
+4d: SQL Analysis   ✓ SAVE sql_issues
+         ↓ (wait for completion)
+4e: Properties Analysis  ✓ SAVE property_issues
+         ↓ (wait for completion)
+4f: API Analysis   ✓ SAVE api_changes
+         ↓ (wait for completion)
+4g: Test Coverage  ✓ SAVE test_coverage
+         ↓ (wait for completion)
+4h: CONSOLIDATE → analysis_data['findings']
+```
 
 ---
 
@@ -1642,6 +1665,18 @@ For each issue found:
     }
   ]
 }
+```
+
+**✅ HANDOFF 4a → 4b**
+```bash
+# Verify 4a (Java analysis) completed and saved
+if 'java_issues' in analysis_data and analysis_data['java_issues'] is not None:
+    java_count = len(analysis_data['java_issues'])
+    print(f"✅ Step 4a COMPLETE: {java_count} Java issues saved to analysis_data")
+    print(f"➡️  Proceeding to Step 4b (XML Analysis)")
+else:
+    print(f"⚠️  Step 4a: No Java issues found (clean analysis)")
+    print(f"➡️  Proceeding to Step 4b (XML Analysis)")
 ```
 
 ---
@@ -1920,9 +1955,11 @@ SPRING BOOT TESTING:
 
 ---
 
-#### 4h: Python Source Code Validation (Enhanced)
+#### 4-Optional: Python Source Code Validation (Enhanced)
 
 **For each changed Python file** (excluding test files and __pycache__):
+
+**NOTE**: This is optional and only if Python files are present in PR
 
 ```
 VALIDATE:
@@ -2095,6 +2132,59 @@ For each issue found:
   ]
 }
 ```
+
+---
+
+#### STEP 4 SYNCHRONIZATION CHECKPOINT (Before Consolidation)
+
+**Verify ALL Step 4 sub-steps (4a-4g) have completed and saved their results:**
+
+```python
+# STEP 4 SYNCHRONIZATION - Ensure all sub-steps complete before consolidation
+print("\n" + "="*70)
+print("⏳ STEP 4: SYNCHRONIZATION CHECKPOINT")
+print("="*70)
+print("\nVerifying all Step 4 sub-steps (4a-4g) have saved their data:")
+
+step4_substeps = {
+    'java_issues': "4a: Java Analysis",
+    'xml_issues': "4b: XML Analysis",
+    'yaml_issues': "4c: YAML Analysis",
+    'sql_issues': "4d: SQL Analysis",
+    'property_issues': "4e: Properties Analysis",
+    'api_changes': "4f: API Analysis",
+    'test_coverage': "4g: Test Coverage"
+}
+
+sync_status = {}
+for field, substep_name in step4_substeps.items():
+    value = analysis_data.get(field)
+
+    if value is None:
+        print(f"   ⏳ WAITING: {substep_name}")
+        sync_status[field] = False
+    elif isinstance(value, (list, dict)) and len(value) == 0:
+        print(f"   ✅ {substep_name}: Complete (no issues found)")
+        sync_status[field] = True
+    else:
+        print(f"   ✅ {substep_name}: Complete ({len(value)} results)")
+        sync_status[field] = True
+
+# Check if all are ready
+all_complete = all(sync_status.values())
+
+if not all_complete:
+    pending = [name for name, status in sync_status.items() if not status]
+    print(f"\n⏳ Waiting for: {', '.join(pending)}")
+    print(f"   (Sequential execution ensures each step completes before next)\n")
+else:
+    print(f"\n✅ ALL Step 4 sub-steps (4a-4g) SYNCHRONIZED and COMPLETE")
+    print(f"➡️  Proceeding to 4h: CONSOLIDATION\n")
+
+print("="*70 + "\n")
+```
+
+---
 
 #### 4h: CONSOLIDATE Step 4 Results → Save to analysis_data
 
@@ -2379,6 +2469,55 @@ For each changed file:
   ]
 }
 ```
+
+---
+
+#### STEP 5 SYNCHRONIZATION CHECKPOINT (Before Consolidation)
+
+**Verify ALL Step 5 sub-steps (5a-5e) have completed and saved their results:**
+
+```python
+# STEP 5 SYNCHRONIZATION - Ensure all sub-steps complete before consolidation
+print("\n" + "="*70)
+print("⏳ STEP 5: SYNCHRONIZATION CHECKPOINT")
+print("="*70)
+print("\nVerifying all Step 5 sub-steps (5a-5e) have saved their data:")
+
+step5_substeps = {
+    'impact_analysis': "5a-5d: Dependency Graph & Impact Analysis",
+    'affected_apis': "5e: Affected APIs Analysis",
+    'affected_functionalities': "5e: Affected Functionalities Analysis"
+}
+
+sync_status = {}
+for field, substep_name in step5_substeps.items():
+    value = analysis_data.get(field)
+
+    if value is None:
+        print(f"   ⏳ WAITING: {substep_name}")
+        sync_status[field] = False
+    elif isinstance(value, (list, dict)) and len(value) == 0:
+        print(f"   ✅ {substep_name}: Complete (no items found)")
+        sync_status[field] = True
+    else:
+        print(f"   ✅ {substep_name}: Complete ({len(value)} results)")
+        sync_status[field] = True
+
+# Check if all are ready
+all_complete = all(sync_status.values())
+
+if not all_complete:
+    pending = [name for name, status in sync_status.items() if not status]
+    print(f"\n⏳ Waiting for: {', '.join(pending)}")
+    print(f"   (Sequential execution ensures each step completes before next)\n")
+else:
+    print(f"\n✅ ALL Step 5 sub-steps (5a-5e) SYNCHRONIZED and COMPLETE")
+    print(f"➡️  Proceeding to 5f: CONSOLIDATION\n")
+
+print("="*70 + "\n")
+```
+
+---
 
 #### 5f: CONSOLIDATE Step 5 Results → Save to analysis_data
 

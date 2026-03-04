@@ -859,13 +859,22 @@ Proceeding to Step 1: Gather PR Context and Extract JIRA Tickets...
    - PR status, creation date
    - Creation timestamp for execution time tracking
    
-3. Extract JIRA ticket IDs:
+3. Extract JIRA ticket IDs (PRIMARY: branch, FALLBACK: description):
    Pattern: [A-Z]+-\d+
-   Search in: PR title AND description
    Example matches: PROJ-123, TICKET-456, ABC-789
-   
+
+   Primary Method - Extract from branch name:
+   - Search in: source_branch name
+   - If found: Use branch tickets, set jira_extraction_method = "branch"
+   - If NOT found: Proceed to fallback
+
+   Fallback Method - Extract from PR description:
+   - Search in: PR title AND description
+   - If found: Use description tickets, set jira_extraction_method = "description"
+   - If NOT found: Set jira_tickets = [], set jira_extraction_method = "none"
+
 4. Handle JIRA scenarios:
-   - If JIRA tickets found: Store for later use
+   - If JIRA tickets found (branch OR description): Store for later use
    - If NO JIRA tickets found: Set jira_tickets = []
      Note: Review will continue, but JIRA posting will be skipped
      
@@ -873,20 +882,25 @@ Proceeding to Step 1: Gather PR Context and Extract JIRA Tickets...
    - Capture existing review comments for context
 ```
 
-**Output**: 
+**Output**:
 ```json
 {
   "pr_number": "{pr_number}",
   "title": "{pr_title}",
   "author": "{pr_author}",
   "jira_tickets": ["{extracted_ticket_ids}"],
+  "jira_extraction_method": "branch|description|none",
   "source_branch": "{source_branch}",
   "target_branch": "{target_branch}",
   "created_at": "{timestamp}",
   "description": "{pr_description}"
 }
 ```
-If no JIRA tickets found, set `jira_tickets: []` and add `jira_warning` field. Review continues but JIRA posting will be skipped in Step 7.
+
+**JIRA Extraction Details**:
+- ✅ If extracted from branch: `jira_extraction_method = "branch"`
+- ✅ If extracted from description: `jira_extraction_method = "description"`
+- ⏭️ If no JIRA tickets found: Set `jira_tickets = []` and `jira_extraction_method = "none"`, add `jira_warning` field. Review continues but JIRA posting will be skipped in Step 7.
 
 ---
 

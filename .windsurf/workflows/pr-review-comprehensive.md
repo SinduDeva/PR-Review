@@ -462,12 +462,67 @@ This section executes BEFORE any PR detection to ensure complete isolation betwe
 import json
 from datetime import datetime
 
-# CRITICAL: Initialize FRESH state objects to prevent memory carryover from previous runs
-# This guarantees that switching branches will not cause false positives
+# ============================================================================
+# WORKFLOW FILE LOCKING - PREVENT CONCURRENT EXECUTION
+# ============================================================================
+import os
+import json
+from pathlib import Path
 
-print("\n" + "="*70)
-print("FRESH STATE INITIALIZATION - NO MEMORY CARRYOVER")
-print("="*70)
+lock_file = ".windsurf/workflows/.pr-review-comprehensive.lock"
+workflow_file = ".windsurf/workflows/pr-review-comprehensive.md"
+
+# Check if already locked
+if os.path.exists(lock_file):
+    with open(lock_file, 'r') as f:
+        lock_data = json.load(f)
+        print(f"\n❌ WORKFLOW LOCKED")
+        print(f"   Locked since: {lock_data.get('timestamp')}")
+        print(f"   Locked by: {lock_data.get('execution_id')}")
+        print(f"\n   This workflow is currently executing.")
+        print(f"   Cannot start another execution until current one completes.")
+        print(f"\n   If the lock is stale (workflow crashed):")
+        print(f"   Delete the lock file: {lock_file}")
+        sys.exit(1)
+
+# Create lock file
+lock_dir = Path(lock_file).parent
+lock_dir.mkdir(parents=True, exist_ok=True)
+
+workflow_execution_id = datetime.now().isoformat()
+lock_data = {
+    "execution_id": workflow_execution_id,
+    "timestamp": workflow_execution_id,
+    "workflow_file": workflow_file,
+    "status": "LOCKED"
+}
+
+with open(lock_file, 'w') as f:
+    json.dump(lock_data, f, indent=2)
+
+print(f"\n✅ WORKFLOW LOCKED FOR EXECUTION")
+print(f"   Lock file created: {lock_file}")
+print(f"   Execution ID: {workflow_execution_id}")
+print(f"   Workflow file will be unlocked upon completion or error")
+
+# Wrap entire workflow execution to ensure lock cleanup
+def unlock_workflow():
+    """Helper function to unlock workflow file"""
+    try:
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            print(f"\n✅ WORKFLOW UNLOCKED (cleanup)")
+            print(f"   Lock file removed: {lock_file}")
+    except Exception as e:
+        print(f"\n⚠️  Error removing lock file: {e}")
+
+try:
+    # CRITICAL: Initialize FRESH state objects to prevent memory carryover from previous runs
+    # This guarantees that switching branches will not cause false positives
+
+    print("\n" + "="*70)
+    print("FRESH STATE INITIALIZATION - NO MEMORY CARRYOVER")
+    print("="*70)
 
 # Generate unique workflow execution ID (timestamp-based)
 workflow_execution_id = datetime.now().isoformat()
@@ -2582,6 +2637,53 @@ if file_size < 1000:
 print(f"\n✅ HTML REPORT GENERATED SUCCESSFULLY")
 print(f"   Location: {output_html}")
 print(f"   Size: {file_size} bytes")
+
+# ============================================================================
+# WORKFLOW EXECUTION COMPLETE - UNLOCK FILE
+# ============================================================================
+print("\n" + "="*70)
+print("WORKFLOW EXECUTION COMPLETE")
+print("="*70)
+
+try:
+    # Remove lock file to allow next execution
+    if os.path.exists(lock_file):
+        os.remove(lock_file)
+        print(f"\n✅ WORKFLOW UNLOCKED")
+        print(f"   Lock file removed: {lock_file}")
+        print(f"   Next execution can now start")
+    else:
+        print(f"\n⚠️  Lock file not found (may have been manually removed)")
+except Exception as e:
+    print(f"\n⚠️  Could not remove lock file: {e}")
+    print(f"   Manual cleanup may be needed: {lock_file}")
+
+print("\n" + "="*70)
+print("✅ COMPLETE - All reports generated in .ai-review/")
+print("="*70 + "\n")
+
+except Exception as workflow_error:
+    # Error occurred during workflow execution
+    print(f"\n" + "="*70)
+    print("⚠️  WORKFLOW EXECUTION FAILED")
+    print("="*70)
+    print(f"\nError: {str(workflow_error)}")
+    print(f"\nAttempting to unlock workflow file...")
+
+    # Ensure lock is released even on failure
+    unlock_workflow()
+
+    print(f"\nStack trace:")
+    import traceback
+    traceback.print_exc()
+
+    # Re-raise the exception to show error to user
+    raise workflow_error
+
+finally:
+    # Final cleanup - ensure lock file is always removed
+    # This is a safety net in case of unexpected issues
+    pass
 
 Expected output:
   ✅ HTML report generated: .ai-review/pr-{pr_number}-analysis.html

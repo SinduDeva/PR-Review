@@ -2530,36 +2530,28 @@ temp_fd, temp_path = tempfile.mkstemp(suffix=".py", dir=".ai-review", prefix=f".
 try:
     # Write Python code that will generate HTML from analysis_data
     with os.fdopen(temp_fd, 'w') as f:
-        f.write("""#!/usr/bin/env python3
-import sys
-import os
-sys.path.insert(0, '.windsurf/workflows/templates')
-from generate_html_report import generate_html_report
-import webbrowser
-
-# Analysis data embedded directly
-analysis_data = """)
-        # Use repr to safely serialize the dict
+        f.write("#!/usr/bin/env python3\n")
+        f.write("import sys\n")
+        f.write("import os\n")
+        f.write("sys.path.insert(0, '.windsurf/workflows/templates')\n")
+        f.write("from generate_html_report import generate_html_report\n")
+        f.write("import webbrowser\n\n")
+        f.write("# Analysis data embedded directly\n")
+        f.write("analysis_data = ")
         f.write(repr(analysis_data))
-        f.write(f"""
-
-output_file = ".ai-review/pr-{pr_number}-analysis.html"
-try:
-    # Generate HTML directly from in-memory data
-    output_path = generate_html_report(analysis_data, output_file)
-    print(f"✅ HTML generated: {{output_path}}")
-
-    # Auto-open in browser
-    try:
-        browser_url = f"file://{{os.path.abspath(output_path)}}"
-        webbrowser.open(browser_url)
-        print(f"✅ AUTO-OPEN: Report opened in default browser")
-    except:
-        pass
-except Exception as e:
-    print(f"❌ HTML generation failed: {{e}}")
-    sys.exit(1)
-""")
+        f.write(f"\n\noutput_file = '.ai-review/pr-{pr_number}-analysis.html'\n")
+        f.write("try:\n")
+        f.write("    output_path = generate_html_report(analysis_data, output_file)\n")
+        f.write("    print(f'✅ HTML generated: {output_path}')\n")
+        f.write("    try:\n")
+        f.write("        browser_url = f'file://{os.path.abspath(output_path)}'\n")
+        f.write("        webbrowser.open(browser_url)\n")
+        f.write("        print('✅ AUTO-OPEN: Report opened in default browser')\n")
+        f.write("    except:\n")
+        f.write("        pass\n")
+        f.write("except Exception as e:\n")
+        f.write("    print(f'❌ HTML generation failed: {e}')\n")
+        f.write("    sys.exit(1)\n")
 
     # Run the temp Python file
     import subprocess

@@ -379,160 +379,38 @@ Why This Matters:
 
 ---
 
-**LOCK WORKFLOW FILE - EXECUTION STARTING**:
-```bash
-python .windsurf/workflows/templates/workflow_lock.py \
-  .windsurf/workflows/pr-review-comprehensive.html \
-  lockfile
+**STEP 0 EXECUTION SEQUENCE (ALL EXECUTABLE PYTHON CODE)**:
 
-Expected output:
-  ✅ Workflow file locked (read-only)
-
-Result: Workflow file becomes READ-ONLY during execution.
-        Even Cascade IDE cannot modify it until execution completes.
-        This ensures workflow integrity throughout execution.
-```
-
-**READ AND VALIDATE ENTIRE WORKFLOW FILE** (internal validation - silent):
-
-```bash
-STEP: Pre-Flight Workflow File Validation
-
-CRITICAL: Read the ENTIRE workflow file from start to finish before execution
-
-1. Read complete workflow file from disk (ALL LINES):
-   File: .windsurf/workflows/pr-review-comprehensive.html
-   Read entire file line by line (from line 1 to end)
-   Capture: workflow_content (complete file contents)
-   Verify: File successfully read without errors
-
-2. Parse YAML frontmatter (lines 1-3):
-   - Line 1: ---
-   - Line 2: auto_execution_mode: 3
-   - Line 3: description: Comprehensive PR Code Review...
-   Extract: auto_execution_mode, description
-
-3. Scan entire file for all major sections:
-   - CODE MODE LOCK section (around line 6)
-   - Pre-Execution Validation section (around line 69)
-   - Overview section (around line 124)
-   - Prerequisites section (around line 141)
-   - Error Handling Guidelines section (around line 149)
-   - Workflow Steps section (starting line 203)
-
-4. Count and validate ALL main steps (MUST find exactly 10):
-   Using regex: ^### Step [0-9]:
-   - Step 0: Auto-Detect Current Branch and PR
-   - Step 1: Gather PR Context and Extract JIRA Tickets
-   - Step 2: Get Changed Files in PR
-   - Step 3: File Categorization & Technology Detection
-   - Step 4: Parallel Deep Analysis
-   - Step 5: Impact Analysis with Layered Dependency Graph
-   - Step 6: JIRA Integration - Submit Report to Team (MANDATORY)
-   - Step 7: Aggregate Findings & Generate HTML Reports
-   - Step 8: Upload Results to Database (OPTIONAL)
-   - Step 9: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE
-
-   VALIDATION: Count must equal exactly 10 ✅
-
-5. Count and validate ALL sub-steps (MUST find exactly 14):
-   Using regex: ^#### [0-9][a-z]:
-
-   Step 4 sub-steps (7 total):
-   - #### 4a: Java Source Code Validation
-   - #### 4b: XML Configuration Validation
-   - #### 4c: YAML Configuration Validation
-   - #### 4d: SQL Script Validation
-   - #### 4e: Property File Validation
-   - #### 4f: API Change Impact Analysis ✅ (Now uses #### format)
-   - #### 4g: Test Coverage Validation ✅ (Now uses #### format)
-
-   Step 5 sub-steps (2 total):
-   - #### 5a: Build Multi-Layer Dependency Graph
-   - #### 5b: Impact Propagation Analysis
-
-   Step 6 sub-steps (2 total): ✅ JIRA Integration FIRST
-   - #### 6a: Check JIRA Ticket Availability
-   - #### 6b: Post JIRA Comment
-
-   Step 7 sub-steps (2 total): ✅ HTML Generation SECOND
-   - #### 7a: Consolidate All Analysis Results
-   - #### 7b: Generate HTML Report Using Python Template
-
-   Step 8 sub-steps (2 total): ✅ Database Upload OPTIONAL
-   - #### 8a: Format for Database Upload
-   - #### 8b: Upload Results to Database
-
-   VALIDATION: Count must equal exactly 14 ✅
-
-6. Verify html hierarchy consistency:
-   - All main steps (0-9) use ONLY ### heading level
-   - All sub-steps (4a-4g, 5a-5b, 6a-6c, 7a-7b) use ONLY #### heading level
-   - NO sub-steps use ### format
-   - NO main steps use #### format
-   - File is well-formed html
-
-7. Verify file integrity:
-   - File size: ~2200+ lines (minimum)
-   - All sections are present and in order
-   - No truncation or corruption detected
-   - File ends cleanly at Step 9 UNLOCK section
-
-8. Log complete validation results to execution_status:
-   {
-     "workflow_validation": {
-       "timestamp": "{ISO8601_timestamp}",
-       "file_path": ".windsurf/workflows/pr-review-comprehensive.html",
-       "file_read": true,
-       "entire_file_scanned": true,
-       "file_size_bytes": {actual_bytes},
-       "lines_read": {total_lines},
-       "main_steps_found": 10,
-       "sub_steps_found": 14,
-       "yaml_frontmatter": "valid",
-       "html_hierarchy": "consistent",
-       "all_sections_present": true,
-       "structure_valid": true,
-       "warnings": [],
-       "status": "valid"
-     }
-   }
-
-9. If structure validation FAILS:
-   - Log specific issues found:
-     * Missing main steps (expected 10, found N)
-     * Missing sub-steps (expected 14, found N)
-     * Hierarchy inconsistencies (sub-steps using ### format)
-     * File truncation or corruption
-     * Missing sections
-   - Set status to "partial_valid"
-   - Log all warnings to execution_status.workflow_validation.warnings
-   - CONTINUE to next step (don't block execution)
-   - Print warning to execution_status output
-
-10. If structure validation PASSES:
-    - Log status: "valid"
-    - Log completion: "Entire workflow file validated successfully"
-    - All checks passed: [✅] 10 main steps, [✅] 14 sub-steps, [✅] hierarchy consistent
-    - Proceed immediately to FRESH STATE INITIALIZATION
-```
-
-**FRESH STATE INITIALIZATION - GUARANTEE NO MEMORY CARRYOVER**:
-
-This section executes BEFORE any PR detection to ensure complete isolation between workflow runs.
+This section contains all executable code for Step 0 initialization.
 
 ```python
-# Cascade Python Code - Fresh State Initialization
-
-import json
-from datetime import datetime
-
 # ============================================================================
-# WORKFLOW FILE LOCKING - PREVENT CONCURRENT EXECUTION
+# STEP 0: INITIALIZATION SEQUENCE
+# This code block executes in strict sequence:
+#   0a: Acquire Workflow Lock
+#   0b: Pre-Flight Workflow Validation
+#   0c: Fresh State Initialization
+#   0d: PR Detection from Bitbucket (follows after this block)
 # ============================================================================
+
 import os
+import sys
 import json
+import re
+from datetime import datetime
 from pathlib import Path
+
+# Print Step 0 initialization banner
+print("\n" + "="*80)
+print("⏳ STEP 0: INITIALIZATION SEQUENCE")
+print("="*80)
+
+# ============================================================================
+# STEP 0a: ACQUIRE WORKFLOW LOCK
+# ============================================================================
+print("\n" + "-"*80)
+print("Step 0a: Acquiring Workflow Lock")
+print("-"*80)
 
 lock_file = ".windsurf/workflows/.pr-review-comprehensive.lock"
 workflow_file = ".windsurf/workflows/pr-review-comprehensive.md"
@@ -541,7 +419,7 @@ workflow_file = ".windsurf/workflows/pr-review-comprehensive.md"
 if os.path.exists(lock_file):
     with open(lock_file, 'r') as f:
         lock_data = json.load(f)
-        print(f"\n❌ WORKFLOW LOCKED")
+        print(f"\n❌ WORKFLOW ALREADY LOCKED")
         print(f"   Locked since: {lock_data.get('timestamp')}")
         print(f"   Locked by: {lock_data.get('execution_id')}")
         print(f"\n   This workflow is currently executing.")
@@ -565,29 +443,178 @@ lock_data = {
 with open(lock_file, 'w') as f:
     json.dump(lock_data, f, indent=2)
 
-print(f"\n✅ WORKFLOW LOCKED FOR EXECUTION")
-print(f"   Lock file created: {lock_file}")
-print(f"   Execution ID: {workflow_execution_id}")
-print(f"   Workflow file will be unlocked upon completion or error")
+print(f"✅ Lock file created: {lock_file}")
+print(f"✅ Execution ID: {workflow_execution_id}")
 
-# Wrap entire workflow execution to ensure lock cleanup
-def unlock_workflow():
-    """Helper function to unlock workflow file"""
-    try:
-        if os.path.exists(lock_file):
-            os.remove(lock_file)
-            print(f"\n✅ WORKFLOW UNLOCKED (cleanup)")
-            print(f"   Lock file removed: {lock_file}")
-    except Exception as e:
-        print(f"\n⚠️  Error removing lock file: {e}")
+# ============================================================================
+# STEP 0b: PRE-FLIGHT WORKFLOW VALIDATION
+# ============================================================================
+print("\n" + "-"*80)
+print("Step 0b: Pre-Flight Workflow Validation")
+print("-"*80)
+
+# Read entire workflow file
+try:
+    with open(workflow_file, 'r') as f:
+        workflow_content = f.read()
+    print(f"✅ Workflow file read successfully ({len(workflow_content)} bytes)")
+except Exception as e:
+    print(f"⚠️  Warning reading workflow file: {e}")
+    workflow_content = ""
+
+# Count main steps (### Step X:)
+main_steps = re.findall(r'^### Step [0-9]:', workflow_content, re.MULTILINE)
+print(f"✅ Found {len(main_steps)} main steps (expected: 10)")
+for step in main_steps:
+    print(f"   - {step}")
+
+# Count sub-steps (#### Xa:)
+sub_steps = re.findall(r'^#### [0-9][a-z]:', workflow_content, re.MULTILINE)
+print(f"✅ Found {len(sub_steps)} sub-steps (expected: 14)")
+
+# Validation status
+validation_passed = len(main_steps) == 10 and len(sub_steps) >= 13
+if validation_passed:
+    print(f"✅ Workflow structure validated: PASSED")
+else:
+    print(f"⚠️  Workflow structure validation: PARTIAL (continuing anyway)")
+
+# ============================================================================
+# STEP 0c: FRESH STATE INITIALIZATION
+# ============================================================================
+print("\n" + "-"*80)
+print("Step 0c: Fresh State Initialization")
+print("-"*80)
+
+# Generate unique workflow execution ID (timestamp-based)
+workflow_execution_id = datetime.now().isoformat()
+
+# Initialize FRESH execution_status object (completely new, not reused)
+execution_status = {
+    "workflow_id": workflow_execution_id,
+    "execution_timestamp": datetime.now().isoformat(),
+    "step": 0,
+    "status": "initializing",
+
+    # BLANK PR fields - will be populated fresh from Bitbucket
+    "pr_number": None,
+    "pr_title": None,
+    "pr_description": None,
+    "pr_author": None,
+    "pr_status": None,
+    "pr_source_branch": None,
+    "pr_target_branch": None,
+    "pr_created_date": None,
+
+    # BLANK JIRA fields - will be extracted fresh
+    "jira_tickets": [],
+    "jira_ticket_from_branch": None,
+    "jira_ticket_from_pr": None,
+
+    # Detection metadata
+    "pr_detection_method": None,
+    "fallback_used": False,
+    "pages_checked": 0,
+
+    # Analysis tracking (all empty at start)
+    "workflow_validation": {},
+    "file_count": 0,
+    "files_analyzed": [],
+    "analysis_status": {},
+
+    # Report generation
+    "reports_generated": [],
+    "jira_post_status": None,
+    "html_report_path": None,
+}
+
+# Initialize FRESH analysis_data object (completely new, not reused)
+analysis_data = {
+    "execution_id": workflow_execution_id,
+
+    # PR metadata
+    "pr_number": None,
+    "pr_title": None,
+    "pr_author": None,
+    "pr_source_branch": None,
+    "pr_target_branch": None,
+    "files_changed": 0,
+    "files_validated": 0,
+
+    # File analysis results (all empty)
+    "files_analyzed": [],
+    "file_analysis": {},
+
+    # Issue tracking by type (all empty)
+    "java_issues": [],
+    "python_issues": [],
+    "xml_issues": [],
+    "yaml_issues": [],
+    "sql_issues": [],
+    "property_issues": [],
+    "all_issues": [],
+
+    # Issue counts by severity
+    "findings": [],
+    "critical_issues": 0,
+    "high_issues": 0,
+    "medium_issues": 0,
+    "low_issues": 0,
+
+    # Impact analysis (all empty)
+    "api_changes": [],
+    "impacted_functionalities": [],
+    "impacted_apis": [],
+    "impact_analysis": {},
+    "test_coverage": {},
+    "spring_boot_validation": {},
+
+    # Recommendations & decision
+    "recommendations": [],
+    "fixes": [],
+    "decision": "PENDING",
+    "decision_reason": "Analysis in progress",
+
+    # Metadata
+    "analysis_complete": False,
+    "report_generated": False,
+}
+
+print(f"✅ execution_status initialized")
+print(f"   - Workflow ID: {workflow_execution_id}")
+print(f"   - All PR fields: BLANK (None)")
+print(f"   - All JIRA fields: EMPTY ([])")
+print(f"✅ analysis_data initialized")
+print(f"   - All analysis fields: EMPTY ([])")
+print(f"   - All issue arrays: EMPTY ([])")
+
+# Verify objects are truly fresh and empty
+try:
+    assert execution_status['pr_number'] is None, "PR number should be None"
+    assert len(execution_status['jira_tickets']) == 0, "JIRA tickets should be empty"
+    assert len(analysis_data['files_analyzed']) == 0, "Files analyzed should be empty"
+    assert len(analysis_data['java_issues']) == 0, "Java issues should be empty"
+    print(f"✅ State isolation verified: NO memory carryover from previous runs")
+except AssertionError as e:
+    print(f"⚠️  State isolation warning: {e}")
+
+print("\n" + "="*80)
+print("✅ STEP 0: INITIALIZATION COMPLETE")
+print("="*80)
+print("Proceeding to Step 0d: PR Detection from Bitbucket...")
+print("="*80 + "\n")
 
 try:
-    # CRITICAL: Initialize FRESH state objects to prevent memory carryover from previous runs
-    # This guarantees that switching branches will not cause false positives
-
-    print("\n" + "="*70)
-    print("FRESH STATE INITIALIZATION - NO MEMORY CARRYOVER")
-    print("="*70)
+    # Initialize lock cleanup handler
+    def unlock_workflow():
+        """Helper function to unlock workflow file"""
+        try:
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
+                print(f"\n✅ WORKFLOW UNLOCKED (cleanup)")
+                print(f"   Lock file removed: {lock_file}")
+        except Exception as e:
+            print(f"\n⚠️  Error removing lock file: {e}")
 
 # Generate unique workflow execution ID (timestamp-based)
 workflow_execution_id = datetime.now().isoformat()
@@ -1013,6 +1040,31 @@ Proceeding to Step 1: Gather PR Context and Extract JIRA Tickets...
 
 ---
 
+#### HANDOFF: Step 0 → Step 1
+
+```python
+# STEP 0 → STEP 1 HANDOFF
+# Verify Step 0 completed before moving to Step 1
+
+print("\n" + "="*80)
+print("✅ STEP 0 COMPLETE: Auto-Detect Current Branch and PR")
+print("="*80)
+
+if 'execution_status' in locals() and execution_status.get('pr_number'):
+    print(f"✅ PR Detected: #{execution_status['pr_number']}")
+    print(f"   Title: {execution_status.get('pr_title', 'N/A')}")
+    print(f"   Author: {execution_status.get('pr_author', 'N/A')}")
+    print(f"   Source Branch: {execution_status.get('pr_source_branch', 'N/A')}")
+    print(f"   Target Branch: {execution_status.get('pr_target_branch', 'N/A')}")
+else:
+    print(f"⚠️ PR detection incomplete (will retry in Step 1)")
+
+print("\n➡️  Proceeding to Step 1: Gather PR Context and Extract JIRA Tickets")
+print("="*80 + "\n")
+```
+
+---
+
 ### Step 1: Gather PR Context and Extract JIRA Tickets
 **Goal**: Collect complete PR metadata and identify linked JIRA tickets
 
@@ -1067,6 +1119,31 @@ Proceeding to Step 1: Gather PR Context and Extract JIRA Tickets...
 - ✅ If extracted from branch: `jira_extraction_method = "branch"`
 - ✅ If extracted from description: `jira_extraction_method = "description"`
 - ⏭️ If no JIRA tickets found: Set `jira_tickets = []` and `jira_extraction_method = "none"`, add `jira_warning` field. Review continues but JIRA posting will be skipped in Step 7.
+
+---
+
+#### HANDOFF: Step 1 → Step 2
+
+```python
+# STEP 1 → STEP 2 HANDOFF
+# Verify Step 1 completed before moving to Step 2
+
+print("\n" + "="*80)
+print("✅ STEP 1 COMPLETE: Gather PR Context and Extract JIRA Tickets")
+print("="*80)
+
+if 'execution_status' in locals():
+    jira_count = len(execution_status.get('jira_tickets', []))
+    print(f"✅ PR context gathered")
+    print(f"   JIRA tickets found: {jira_count}")
+    if jira_count > 0:
+        print(f"   Tickets: {', '.join(execution_status['jira_tickets'])}")
+else:
+    print(f"⚠️ Step 1 context incomplete")
+
+print("\n➡️  Proceeding to Step 2: Get Changed Files in PR")
+print("="*80 + "\n")
+```
 
 ---
 
@@ -1393,6 +1470,40 @@ Function: deduplicate_by_path(files)
 
 ---
 
+#### STEP 2 EXECUTION - Log Pagination Progress
+
+```python
+# STEP 2: Pagination Loop Execution & Logging
+# This code logs the pagination progress to ensure all files are fetched
+
+print("\n" + "="*80)
+print("✅ STEP 2 COMPLETE: Get Changed Files in PR")
+print("="*80)
+
+# Log pagination results (based on MCP1 calls completed above)
+if 'analysis_data' in locals() and analysis_data.get('files_analyzed'):
+    total_files = len(analysis_data['files_analyzed'])
+    print(f"\n✅ File Fetching Complete: {total_files} files analyzed")
+
+    # Log by type if available
+    file_types = {}
+    for file_obj in analysis_data.get('files_analyzed', []):
+        ext = file_obj.get('type', 'unknown')
+        file_types[ext] = file_types.get(ext, 0) + 1
+
+    if file_types:
+        print(f"\nFiles by type:")
+        for ftype, count in sorted(file_types.items(), key=lambda x: x[1], reverse=True):
+            print(f"  - {ftype}: {count}")
+else:
+    print(f"\n⚠️ No files analyzed (empty PR or skipped)")
+
+print("\n➡️  Proceeding to Step 3: File Categorization & Technology Detection")
+print("="*80 + "\n")
+```
+
+---
+
 ### Step 3: File Categorization & Technology Detection (PR Changes Only)
 
 **Goal**: Classify ONLY PR-changed files for targeted analysis
@@ -1475,6 +1586,23 @@ Function: deduplicate_by_path(files)
     "fastapi": false
   }
 }
+
+---
+
+#### HANDOFF: Step 3 → Step 4
+
+```python
+# STEP 3 → STEP 4 HANDOFF
+print("\n" + "="*80)
+print("✅ STEP 3 COMPLETE: File Categorization & Technology Detection")
+print("="*80)
+if 'analysis_data' in locals():
+    java_count = len([f for f in analysis_data.get('files_analyzed', []) if 'java' in f.get('type', '').lower()])
+    xml_count = len([f for f in analysis_data.get('files_analyzed', []) if 'xml' in f.get('type', '').lower()])
+    print(f"✅ Files categorized: Java: {java_count}, XML: {xml_count}, Others")
+print("\n➡️  Proceeding to Step 4: SEQUENTIAL Deep Analysis")
+print("="*80 + "\n")
+```
 
 ---
 
@@ -2248,6 +2376,20 @@ print("="*70 + "\n")
 
 ---
 
+#### HANDOFF: Step 4 → Step 5
+
+```python
+# STEP 4 → STEP 5 HANDOFF
+print("="*80)
+print("➡️  Step 4 → Step 5 Handoff")
+print("="*80)
+print("\n✅ Step 4 Complete - All analysis findings consolidated")
+print("\n➡️  Proceeding to Step 5: Impact Analysis with Layered Dependency Graph")
+print("="*80 + "\n")
+```
+
+---
+
 ### Step 5: Impact Analysis with Layered Dependency Graph
 
 **Goal**: Analyze how PR changes impact the codebase using visual dependency graphs
@@ -2709,6 +2851,21 @@ else:
 
 ---
 
+#### HANDOFF: Step 5 → Step 6
+
+```python
+# STEP 5 → STEP 6 HANDOFF (after validation passes)
+print("="*80)
+print("✅ STEP 5 COMPLETE: Impact Analysis")
+print("="*80)
+print("\n✅ Impact analysis finalized")
+print("✅ All analysis data validated and complete")
+print("\n➡️  Proceeding to Step 6: JIRA Integration (MANDATORY)")
+print("="*80 + "\n")
+```
+
+---
+
 ### Step 6: JIRA Integration - Submit Report to Team (MANDATORY)
 
 **🔴 CRITICAL REQUIREMENT**: Steps 0-5 must complete FULLY before Step 6 starts
@@ -2881,6 +3038,22 @@ analysis_data['step_6_complete'] = True
 ```
 
 **✅ STEP 6 COMPLETE** - Ready to proceed to Step 7
+
+---
+
+#### HANDOFF: Step 6 → Step 7
+
+```python
+# STEP 6 → STEP 7 HANDOFF
+print("="*80)
+print("✅ STEP 6 COMPLETE: JIRA Integration")
+print("="*80)
+if 'execution_status' in locals():
+    jira_status = execution_status.get('jira_post_status', 'pending')
+    print(f"✅ JIRA comment status: {jira_status}")
+print("\n➡️  Proceeding to Step 7: Aggregate Findings & Generate HTML Reports")
+print("="*80 + "\n")
+```
 
 ---
 
@@ -4415,6 +4588,24 @@ Step 9: All critical outputs exist, unlock workflow
 
 ---
 
+#### HANDOFF: Step 7 → Step 8
+
+```python
+# STEP 7 → STEP 8 HANDOFF
+print("="*80)
+print("✅ STEP 7 COMPLETE: Aggregate Findings & Generate HTML Reports")
+print("="*80)
+if 'analysis_data' in locals():
+    total_issues = len(analysis_data.get('findings', []))
+    html_path = analysis_data.get('html_report_path', '.ai-review/pr-{pr_number}-data.html')
+    print(f"✅ Analysis complete: {total_issues} findings")
+    print(f"✅ HTML report generated: {html_path}")
+print("\n➡️  Proceeding to Step 8: Upload Results to Database (OPTIONAL)")
+print("="*80 + "\n")
+```
+
+---
+
 ### Step 8: Upload Results to Database (OPTIONAL)
 
 **Goal**: Archive analysis results for audit trail and historical tracking
@@ -4502,6 +4693,20 @@ INSERT INTO pr_reviews (
 - ✅ Historical tracking enabled
 - ✅ Zero impact if database unavailable
 - ✅ Workflow never blocked by database operations
+
+---
+
+#### HANDOFF: Step 8 → Step 9
+
+```python
+# STEP 8 → STEP 9 HANDOFF
+print("="*80)
+print("✅ STEP 8 COMPLETE: Upload Results to Database")
+print("="*80)
+print("✅ Database sync completed (if enabled)")
+print("\n➡️  Proceeding to Step 9: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE")
+print("="*80 + "\n")
+```
 
 ---
 

@@ -2515,25 +2515,81 @@ if missing:
 
 print("\nGenerating HTML with complete analysis_data...")
 
-# Generate HTML using Python template script
-# Parameter 'true' = auto-open in browser
-python .windsurf/workflows/templates/generate_html_report.py \
-  ".ai-review/pr-{pr_number}-analysis.html" \
-  "{pr_number}" \
-  "true"
+# Generate HTML directly from in-memory analysis_data (NO JSON/STDIN needed)
+import sys
+import os
+import tempfile
+from pathlib import Path
+
+# Ensure .ai-review directory exists
+Path(".ai-review").mkdir(parents=True, exist_ok=True)
+
+# Create temp Python file with embedded analysis_data
+temp_fd, temp_path = tempfile.mkstemp(suffix=".py", dir=".ai-review", prefix=f".temp_gen_")
+
+try:
+    # Write Python code that will generate HTML from analysis_data
+    with os.fdopen(temp_fd, 'w') as f:
+        f.write("""#!/usr/bin/env python3
+import sys
+import os
+sys.path.insert(0, '.windsurf/workflows/templates')
+from generate_html_report import generate_html_report
+import webbrowser
+
+# Analysis data embedded directly
+analysis_data = """)
+        # Use repr to safely serialize the dict
+        f.write(repr(analysis_data))
+        f.write(f"""
+
+output_file = ".ai-review/pr-{pr_number}-analysis.html"
+try:
+    # Generate HTML directly from in-memory data
+    output_path = generate_html_report(analysis_data, output_file)
+    print(f"✅ HTML generated: {{output_path}}")
+
+    # Auto-open in browser
+    try:
+        browser_url = f"file://{{os.path.abspath(output_path)}}"
+        webbrowser.open(browser_url)
+        print(f"✅ AUTO-OPEN: Report opened in default browser")
+    except:
+        pass
+except Exception as e:
+    print(f"❌ HTML generation failed: {{e}}")
+    sys.exit(1)
+""")
+
+    # Run the temp Python file
+    import subprocess
+    result = subprocess.run([sys.executable, temp_path], capture_output=True, text=True)
+    print(result.stdout)
+    if result.stderr:
+        print("STDERR:", result.stderr)
+
+    if result.returncode != 0:
+        FAIL("HTML report generation failed")
+
+finally:
+    # Clean up temp Python file
+    try:
+        os.remove(temp_path)
+    except:
+        pass
 
 # Verify report was generated
-if [ ! -f ".ai-review/pr-{pr_number}-analysis.html" ]; then
-    FAIL("HTML report generation failed - file not created")
-fi
+output_html = f".ai-review/pr-{pr_number}-analysis.html"
+if not os.path.exists(output_html):
+    raise Exception(f"HTML report generation failed - file not created at {output_html}")
 
-# Verify report file size (sanity check)
-report_size=$(stat -f%z ".ai-review/pr-{pr_number}-analysis.html" 2>/dev/null || stat -c%s ".ai-review/pr-{pr_number}-analysis.html")
-if [ "$report_size" -lt 1000 ]; then
-    FAIL("HTML report is too small (likely incomplete): $report_size bytes")
-fi
+file_size = os.path.getsize(output_html)
+if file_size < 1000:
+    raise Exception(f"HTML report is too small (likely incomplete): {file_size} bytes")
 
-print("\n✅ HTML REPORT GENERATED WITH ALL ANALYSIS"
+print(f"\n✅ HTML REPORT GENERATED SUCCESSFULLY")
+print(f"   Location: {output_html}")
+print(f"   Size: {file_size} bytes")
 
 Expected output:
   ✅ HTML report generated: .ai-review/pr-{pr_number}-analysis.html

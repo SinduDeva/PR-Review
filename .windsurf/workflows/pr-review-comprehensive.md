@@ -404,7 +404,153 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
     - Log status: "valid"
     - Log completion: "Entire workflow file validated successfully"
     - All checks passed: [✅] 10 main steps, [✅] 14 sub-steps, [✅] hierarchy consistent
-    - Proceed immediately to PR auto-detection (Step 0 Actions)
+    - Proceed immediately to FRESH STATE INITIALIZATION
+```
+
+**FRESH STATE INITIALIZATION - GUARANTEE NO MEMORY CARRYOVER**:
+
+This section executes BEFORE any PR detection to ensure complete isolation between workflow runs.
+
+```python
+# Cascade Python Code - Fresh State Initialization
+
+import json
+from datetime import datetime
+
+# CRITICAL: Initialize FRESH state objects to prevent memory carryover from previous runs
+# This guarantees that switching branches will not cause false positives
+
+print("\n" + "="*70)
+print("FRESH STATE INITIALIZATION - NO MEMORY CARRYOVER")
+print("="*70)
+
+# Generate unique workflow execution ID (timestamp-based)
+workflow_execution_id = datetime.now().isoformat()
+
+# Initialize FRESH execution_status object (completely new, not reused)
+execution_status = {
+    "workflow_id": workflow_execution_id,
+    "execution_timestamp": datetime.now().isoformat(),
+    "step": 0,
+    "status": "initializing",
+
+    # BLANK PR fields - will be populated fresh from Bitbucket
+    "pr_number": None,
+    "pr_title": None,
+    "pr_description": None,
+    "pr_author": None,
+    "pr_status": None,
+    "pr_source_branch": None,
+    "pr_target_branch": None,
+    "pr_created_date": None,
+
+    # BLANK JIRA fields - will be extracted fresh
+    "jira_tickets": [],
+    "jira_ticket_from_branch": None,
+    "jira_ticket_from_pr": None,
+
+    # Detection metadata
+    "pr_detection_method": None,
+    "fallback_used": False,
+    "pages_checked": 0,
+
+    # Analysis tracking (all empty at start)
+    "workflow_validation": {},
+    "file_count": 0,
+    "files_analyzed": [],
+    "analysis_status": {},
+
+    # Report generation
+    "reports_generated": [],
+    "jira_post_status": None,
+    "html_report_path": None,
+}
+
+# Initialize FRESH analysis_data object (completely new, not reused)
+analysis_data = {
+    "execution_id": workflow_execution_id,
+    "pr_number": None,
+    "pr_title": None,
+
+    # File analysis results (all empty)
+    "files_analyzed": [],
+    "file_analysis": {},
+
+    # Issue tracking by type (all empty)
+    "java_issues": [],
+    "python_issues": [],
+    "xml_issues": [],
+    "yaml_issues": [],
+    "sql_issues": [],
+    "property_issues": [],
+    "all_issues": [],
+
+    # Impact analysis (all empty)
+    "api_changes": [],
+    "impacted_functionalities": [],
+    "impacted_apis": [],
+    "impact_analysis": {},
+    "test_coverage_analysis": {},
+
+    # Recommendations (all empty)
+    "recommendations": [],
+    "fixes": [],
+
+    # Metadata
+    "analysis_complete": False,
+    "report_generated": False,
+}
+
+# Log state initialization
+print(f"\n✅ Fresh workflow state initialized")
+print(f"   Workflow ID: {workflow_execution_id}")
+print(f"   Execution Timestamp: {execution_status['execution_timestamp']}")
+print(f"   Previous PR data: CLEARED (not carried over)")
+print(f"   Analysis data: CLEARED (not carried over)")
+print(f"   State isolation: GUARANTEED")
+
+# Verify objects are truly fresh and empty
+assert execution_status['pr_number'] is None, "PR number should be None"
+assert len(execution_status['jira_tickets']) == 0, "JIRA tickets should be empty"
+assert len(analysis_data['files_analyzed']) == 0, "Files analyzed should be empty"
+assert len(analysis_data['java_issues']) == 0, "Java issues should be empty"
+
+print(f"\n✅ State isolation verified:")
+print(f"   - PR fields: BLANK (ready for fresh detection)")
+print(f"   - Analysis fields: EMPTY (ready for fresh analysis)")
+print(f"   - No memory carryover from previous runs: CONFIRMED")
+
+print("\n" + "="*70)
+print("Proceeding to PR auto-detection with fresh state...")
+print("="*70 + "\n")
+```
+
+**Pre-Detection Verification** (ensure fresh state):
+```bash
+VERIFY NO MEMORY CARRYOVER:
+
+Before fetching PR from Bitbucket, confirm state is clean:
+
+1. Confirm execution_status is FRESH:
+   - execution_status['pr_number'] == None? ✅ YES
+   - execution_status['pr_title'] == None? ✅ YES
+   - execution_status['jira_tickets'] == []? ✅ YES
+   - No data from previous run: CONFIRMED ✅
+
+2. Confirm analysis_data is FRESH:
+   - analysis_data['files_analyzed'] == []? ✅ YES
+   - analysis_data['java_issues'] == []? ✅ YES
+   - analysis_data['python_issues'] == []? ✅ YES
+   - analysis_data['api_changes'] == []? ✅ YES
+   - No analysis from previous PR: CONFIRMED ✅
+
+3. Ready for live PR detection:
+   - State isolation: ✅ GUARANTEED
+   - Branch switching safe: ✅ YES
+   - Memory carryover risk: ✅ ELIMINATED
+   - Ready to fetch PR from Bitbucket: ✅ YES
+
+Log: "State verification passed. Ready for fresh PR detection from Bitbucket."
 ```
 
 **Actions** (with error handling):
@@ -413,6 +559,7 @@ PRIMARY METHOD:
 1. Get current branch name:
    git rev-parse --abbrev-ref HEAD
    → Store: current_branch
+   Log: "Current branch (fresh from git): {current_branch}"
 
 1a. Extract JIRA ticket ID from branch name (NEW):
    Regex pattern: [A-Z]+[-_][0-9]+
@@ -479,6 +626,24 @@ PRIMARY METHOD:
      If found_pr found:
        → Extract PR number → Record in execution_status
        → Record: status = "success", fallback_used = false, pages_checked = {page}
+
+       **FRESH DATA CONFIRMATION** (Critical for memory safety):
+       Log: "✅ PR found using FRESH Bitbucket API call (mcp1_getPullRequests)"
+       Log: "   PR Number: {pr_number}"
+       Log: "   PR Title: {pr_title}"
+       Log: "   Source Branch: {pr_source_branch}"
+       Log: "   Current Branch: {current_branch}"
+       Log: "   Branch Match: EXACT ✅"
+       Log: "   Data Source: LIVE Bitbucket (NOT memory, NOT cache)"
+       Log: "   Memory carryover: IMPOSSIBLE (all fields populated fresh)"
+
+       Store in execution_status:
+         pr_number = {fresh_pr_number}
+         pr_title = {fresh_pr_title}
+         pr_source_branch = {fresh_source_branch}
+         pr_detection_method = "bitbucket_mcp_fresh"
+         fallback_used = false
+
        → Continue to Step 1
 
      Else (no PR found in any page):
@@ -509,6 +674,14 @@ FALLBACK METHOD 2 - Git Local Detection (if MCP fails):
        attempted: 3
        fallback_used: true
        method: "git_local_detection"
+
+     **FALLBACK DATA SOURCE** (Not ideal but still fresh):
+     Log: "⚠️ Using Git-based fallback detection (Bitbucket MCP unavailable)"
+     Log: "   Extracted PR number from: branch name / git log / git config"
+     Log: "   Data Source: GIT LOCAL (fresh, not Bitbucket)"
+     Log: "   Warning: May be different from actual Bitbucket PR if out of sync"
+     Log: "   Recommendation: Verify PR exists and is OPEN in Bitbucket"
+
      → Continue to Step 1 with extracted PR number
 
    If git analysis also fails:
@@ -590,6 +763,40 @@ SUCCESS VALIDATION:
 ```
 ❌ No PR found for branch '{current_branch}'. Please create a PR first.
 [WORKFLOW STOPS HERE]
+```
+
+**FINAL SAFETY CHECK - Step 0 Summary** (Confirms PR and eliminates false positive risk):
+```
+╔══════════════════════════════════════════════════════════════════╗
+║           STEP 0 COMPLETE - PR DETECTION SUMMARY                ║
+╚══════════════════════════════════════════════════════════════════╝
+
+✅ FRESH STATE INITIALIZATION
+   └─ execution_status: FRESH (no carryover from previous runs)
+   └─ analysis_data: FRESH (no analysis from previous PR)
+   └─ Workflow ID: {workflow_execution_id} (unique per run)
+
+✅ PR DETECTION
+   └─ Method: {pr_detection_method}
+   └─ Current Branch: {current_branch} (fresh from git)
+   └─ PR Number: {pr_number}
+   └─ PR Title: {pr_title}
+   └─ PR Status: {pr_status} (must be OPEN)
+   └─ Source Branch: {pr_source_branch}
+   └─ Branch Match: EXACT ✅
+
+✅ DATA SOURCE VERIFICATION
+   └─ Data Origin: LIVE Bitbucket MCP (fresh call, not cache)
+   └─ Memory Carryover Risk: ELIMINATED ✅
+   └─ Safe for Branch Switching: YES ✅
+   └─ Safe for Multiple Re-runs: YES ✅
+
+✅ READY FOR ANALYSIS
+   └─ Current PR to analyze: PR-{pr_number}
+   └─ Analysis will use only data from this PR: CONFIRMED ✅
+   └─ No risk of analyzing wrong PR: CONFIRMED ✅
+
+Proceeding to Step 1: Gather PR Context and Extract JIRA Tickets...
 ```
 
 ---

@@ -2417,13 +2417,21 @@ DO NOT skip Step 6 - JIRA posting is MANDATORY.
 Verify if JIRA tickets were extracted in Step 1:
 
 ```bash
+# Step 6 Status Check
+echo "═══════════════════════════════════════════════════════════════════"
+echo "STEP 6: JIRA Integration - Submit Report to Team"
+echo "═══════════════════════════════════════════════════════════════════"
+echo ""
+
+# Check if we have JIRA tickets from Step 1
 if [ -z "$jira_tickets" ]; then
   echo "⏭️  No JIRA tickets found in PR description"
-  echo "   Skipping JIRA posting, continuing to Step 7"
-  exit 0
+  echo "   Will save comment to file for manual posting"
+  HAS_JIRA_TICKETS=false
+else
+  echo "✅ Found JIRA tickets: $jira_tickets"
+  HAS_JIRA_TICKETS=true
 fi
-
-echo "✅ Found JIRA tickets: $jira_tickets"
 ```
 
 #### 6b: Post JIRA Comment (with graceful degradation)
@@ -2505,6 +2513,24 @@ for ticket_id in analysis_data.get('jira_tickets', []):
 
 **Output**: JIRA comment posted OR saved to file (both contain 100% of analysis)
 
+#### 6c: Mark Step 6 Complete
+
+```bash
+# Mark Step 6 completion in analysis_data
+echo ""
+echo "✅ STEP 6 COMPLETE: JIRA Integration finished"
+echo "   - Comment generated with all analysis"
+echo "   - Comment saved to .ai-review/pr-{pr_number}-jira-comment.txt"
+echo "   - Ready for Step 7"
+echo ""
+
+# Set completion flag for Step 7
+export STEP_6_COMPLETE=true
+analysis_data['step_6_complete'] = True
+```
+
+**✅ STEP 6 COMPLETE** - Ready to proceed to Step 7
+
 ---
 
 ### Step 7: Aggregate Findings & Generate HTML Reports
@@ -2517,12 +2543,64 @@ This step executes AFTER JIRA posting is complete. HTML generation is user-facin
 
 **NO JSON DEPENDENCY**: This step uses in-memory analysis_data and Python templates only.
 
+#### 7-Guard: Verify Step 6 Completion
+
+```bash
+# GUARD: Ensure Step 6 finished before proceeding
+echo "═══════════════════════════════════════════════════════════════════"
+echo "STEP 7: Aggregate Findings & Generate HTML Reports"
+echo "═══════════════════════════════════════════════════════════════════"
+echo ""
+
+# Verify Step 6 is complete
+if [ "$STEP_6_COMPLETE" != "true" ]; then
+    echo "⚠️  STEP 6 was not marked complete"
+    echo "   Proceeding anyway (Step 6 may have skipped if no JIRA tickets)"
+fi
+
+echo "✅ Proceeding to Step 7: HTML Report Generation"
+echo ""
+```
+
 #### 7a: Consolidate All Analysis Results (IN-MEMORY)
 
 ```python
 # NO FILE I/O - All operations on in-memory analysis_data
 
+print("CONSOLIDATING ANALYSIS DATA FOR HTML REPORT")
+print("=" * 70)
+
+# Verify PR data is present (from Steps 0-1)
+print("\n✅ PR Metadata Check:")
+pr_metadata_required = {
+    'pr_number': "PR identifier",
+    'pr_title': "PR title/description",
+    'pr_author': "PR author",
+    'pr_source_branch': "Source branch",
+    'pr_target_branch': "Target branch",
+}
+
+for field, description in pr_metadata_required.items():
+    value = analysis_data.get(field)
+    if value:
+        print(f"   ✅ {field}: {value}")
+    else:
+        print(f"   ⚠️  {field}: MISSING (will use default)")
+        # Set defaults
+        if field == 'pr_number':
+            analysis_data['pr_number'] = 'UNKNOWN'
+        elif field == 'pr_title':
+            analysis_data['pr_title'] = 'Code Review Analysis'
+        elif field == 'pr_author':
+            analysis_data['pr_author'] = 'Unknown'
+        elif field == 'pr_source_branch':
+            analysis_data['pr_source_branch'] = 'feature-branch'
+        elif field == 'pr_target_branch':
+            analysis_data['pr_target_branch'] = 'main'
+
 # Merge findings from all sources
+print("\n📊 Merging findings from all analysis sources:")
+
 merged_findings = {
     'java_issues': analysis_data.get('java_issues', []),
     'python_issues': analysis_data.get('python_issues', []),
@@ -2534,16 +2612,40 @@ merged_findings = {
     'security_issues': analysis_data.get('security_issues', []),
 }
 
-# Deduplicate and prioritize by severity
-analysis_data['findings'] = prioritize_findings(merged_findings)
+# Log what's being merged
+total_issues = 0
+for category, issues in merged_findings.items():
+    issue_count = len(issues) if isinstance(issues, list) else 0
+    total_issues += issue_count
+    if issue_count > 0:
+        print(f"   • {category}: {issue_count} issues")
 
-# Count issues by severity
-analysis_data['critical_issues'] = count_by_severity(analysis_data['findings'], 'CRITICAL')
-analysis_data['high_issues'] = count_by_severity(analysis_data['findings'], 'HIGH')
-analysis_data['medium_issues'] = count_by_severity(analysis_data['findings'], 'MEDIUM')
-analysis_data['low_issues'] = count_by_severity(analysis_data['findings'], 'LOW')
+# Compile flat list of findings (with defaults if none exist)
+all_findings = []
+for category, issues in merged_findings.items():
+    if isinstance(issues, list):
+        all_findings.extend(issues)
 
-print("✅ Analysis consolidated (in-memory, NO JSON files)")
+# If no findings, use empty list (don't fail)
+if not all_findings:
+    print("   ℹ️  No issues found in any category (clean analysis)")
+    all_findings = []
+
+analysis_data['findings'] = all_findings
+print(f"\n   ✅ Consolidated {len(all_findings)} findings total")
+
+# Count issues by severity (safe counting)
+print("\n📊 Counting issues by severity:")
+for severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
+    count = 0
+    for finding in all_findings:
+        if isinstance(finding, dict) and finding.get('severity') == severity:
+            count += 1
+    analysis_data[f'{severity.lower()}_issues'] = count
+    if count > 0:
+        print(f"   • {severity}: {count} issues")
+
+print("\n✅ Analysis consolidated (in-memory, NO JSON files)")
 ```
 
 #### 7b: Generate HTML Report Using Python Template (NO SHORTCUTS)

@@ -569,8 +569,15 @@ execution_status = {
 # Initialize FRESH analysis_data object (completely new, not reused)
 analysis_data = {
     "execution_id": workflow_execution_id,
+
+    # PR metadata
     "pr_number": None,
     "pr_title": None,
+    "pr_author": None,
+    "pr_source_branch": None,
+    "pr_target_branch": None,
+    "files_changed": 0,
+    "files_validated": 0,
 
     # File analysis results (all empty)
     "files_analyzed": [],
@@ -585,16 +592,26 @@ analysis_data = {
     "property_issues": [],
     "all_issues": [],
 
+    # Issue counts by severity
+    "findings": [],
+    "critical_issues": 0,
+    "high_issues": 0,
+    "medium_issues": 0,
+    "low_issues": 0,
+
     # Impact analysis (all empty)
     "api_changes": [],
     "impacted_functionalities": [],
     "impacted_apis": [],
     "impact_analysis": {},
-    "test_coverage_analysis": {},
+    "test_coverage": {},
+    "spring_boot_validation": {},
 
-    # Recommendations (all empty)
+    # Recommendations & decision
     "recommendations": [],
     "fixes": [],
+    "decision": "PENDING",
+    "decision_reason": "Analysis in progress",
 
     # Metadata
     "analysis_complete": False,

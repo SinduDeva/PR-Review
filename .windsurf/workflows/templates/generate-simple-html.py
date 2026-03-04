@@ -239,7 +239,7 @@ def open_html_in_browser(html_file):
         return False
 
 
-def generate_html_report(data):
+def generate_simple_html_report(data):
     """Generate HTML report with expandable file sections and all required analysis sections"""
 
     metadata = data.get('metadata', {})
@@ -781,7 +781,7 @@ def generate_html_report(data):
     return html
 
 
-def save_html_report(data, output_file=None, auto_open=True):
+def save_simple_html_report(data, output_file=None, auto_open=True):
     """Save HTML report to file and optionally open in browser
 
     Guaranteed valid HTML output even if generation fails.
@@ -798,7 +798,7 @@ def save_html_report(data, output_file=None, auto_open=True):
 
     # Try to generate main HTML
     try:
-        html = generate_html_report(data)
+        html = generate_simple_html_report(data)
         is_valid, error_msg = validate_html(html)
 
         if not is_valid:
@@ -841,7 +841,7 @@ if __name__ == '__main__':
         data = json.load(sys.stdin)
 
         # Generate and save HTML report (auto-open disabled in subprocess)
-        save_html_report(data, auto_open=False)
+        save_simple_html_report(data, auto_open=False)
 
         sys.exit(0)
     except (json.JSONDecodeError, EOFError) as e:

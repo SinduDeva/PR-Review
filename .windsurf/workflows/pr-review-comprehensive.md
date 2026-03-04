@@ -363,8 +363,8 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
    - Step 3: File Categorization & Technology Detection
    - Step 4: Parallel Deep Analysis
    - Step 5: Impact Analysis with Layered Dependency Graph
-   - Step 6: Aggregate Findings & Generate Reports
-   - Step 7: JIRA Integration - Submit Report to Team (MANDATORY)
+   - Step 6: JIRA Integration - Submit Report to Team (MANDATORY)
+   - Step 7: Aggregate Findings & Generate HTML Reports
    - Step 8: Upload Results to Database (OPTIONAL)
    - Step 9: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE
 
@@ -386,18 +386,17 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
    - #### 5a: Build Multi-Layer Dependency Graph
    - #### 5b: Impact Propagation Analysis
 
-   Step 6 sub-steps (2 total): ✅ CORRECTED ORDER
+   Step 6 sub-steps (2 total): ✅ JIRA Integration FIRST
    - #### 6a: Check JIRA Ticket Availability
    - #### 6b: Post JIRA Comment
 
-   Step 7 sub-steps (2 total): ✅ CORRECTED ORDER
-   - #### 7a: Format for Database Upload
-   - #### 7b: Upload Results to Database
+   Step 7 sub-steps (2 total): ✅ HTML Generation SECOND
+   - #### 7a: Consolidate All Analysis Results
+   - #### 7b: Generate HTML Report Using Python Template
 
-   Step 8 sub-steps (3 total): ✅ CORRECTED ORDER
-   - #### 6a: Consolidate All Analysis Results
-   - #### 6b: Generate JSON Data File for Reports
-   - #### 8c: Generate HTML Report and CLI Output
+   Step 8 sub-steps (2 total): ✅ Database Upload OPTIONAL
+   - #### 8a: Format for Database Upload
+   - #### 8b: Upload Results to Database
 
    VALIDATION: Count must equal exactly 14 ✅
 

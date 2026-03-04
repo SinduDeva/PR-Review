@@ -314,6 +314,40 @@ Step 1-8 failures → Log error, continue to next step
 ### Step 0: Auto-Detect Current Branch and PR (ENHANCED)
 **Goal**: Identify the PR associated with current Git branch
 
+---
+
+**🔴 CRITICAL REQUIREMENT - IN-MEMORY PR DATA MUST NOT BE USED**:
+
+```
+⚠️  DO NOT use in-memory PR data for Bitbucket API calls
+⚠️  DO NOT use cached/previous PR data
+⚠️  DO NOT try to "get" a PR from Bitbucket using in-memory PR number
+⚠️  MUST FETCH FRESH from Bitbucket API with exact branch matching
+
+Correct Approach:
+  1. Get current git branch name
+  2. Call mcp1_getPullRequests() with state="OPEN"
+  3. PAGINATE with pageLen=5 (small batches, NOT 50)
+  4. MATCH exactly: source.branch.name OR destination.branch.name == current_branch
+  5. Extract PR number from matched result
+  6. Return fresh PR data (NOT from memory)
+
+Wrong Approach (DO NOT DO THIS):
+  ❌ if in_memory_pr_exists: return in_memory_pr
+  ❌ Call mcp1_getPullRequest(memory_pr_number)  # Wrong! Creates circular dependency
+  ❌ Use cached PR data from previous workflow runs
+  ❌ pageLen=50 (too large - MCP response bloat, parsing issues)
+
+Why This Matters:
+  - Memory data may be stale
+  - Branch names can change
+  - PR state may have changed
+  - Prevents circular API call dependencies
+  - MCP server performance (smaller page sizes are better)
+```
+
+---
+
 **LOCK WORKFLOW FILE - EXECUTION STARTING**:
 ```bash
 python .windsurf/workflows/templates/workflow_lock.py \
@@ -702,9 +736,18 @@ PRIMARY METHOD:
 3. Query Bitbucket for OPEN PRs with PAGINATION (PRIMARY):
    Initialize pagination:
      page = 1
-     pageSize = 5              # Fetch only 5 PRs per request
+     pageLen = 5               # Fetch only 5 PRs per request (small batches, not 50!)
      max_pages = 20            # Scan up to 20 pages (100 PRs total with pagination)
      found_pr = None
+     current_branch = git rev-parse --abbrev-ref HEAD
+
+   Validation:
+     Log: "🔍 Searching for OPEN PR matching:"
+     Log: "   Source Branch: {current_branch}"
+     Log: "   Target Branch: {target_branch} (will check if target_branch PR exists)"
+     Log: "   Batch Size: 5 PRs per request"
+     Log: "   Max Pages to Scan: 20"
+     Log: ""
 
    Loop until PR found or max pages reached:
      Try:
@@ -714,7 +757,7 @@ PRIMARY METHOD:
          repo_slug="{repo_slug}",
          state="OPEN",
          page={page},
-         pageSize={pageSize}
+         pageLen={pageLen}              # Use 5, NOT 50!
        )
 
        If result is empty:
@@ -722,19 +765,30 @@ PRIMARY METHOD:
          Break loop
 
        For each PR in response (5 PRs per page):
-         - Check: PR.source.branch.name == current_branch
-         - Check: PR.state == "OPEN"
+         // EXACT MATCHING - Source Branch
+         If PR.source.branch.name == current_branch:
+           - Check: PR.state == "OPEN"
+           If matches:
+             → found_pr = PR
+             → found_via = "source_branch"
+             → Extract PR number
+             → Break inner loop
+             → Break outer loop
 
-         If matches:
-           → found_pr = PR
-           → Extract PR number
-           → Break inner loop
-           → Break outer loop
+         // EXACT MATCHING - Destination Branch (if source not found)
+         If PR.destination.branch.name == current_branch:
+           - Check: PR.state == "OPEN"
+           If matches:
+             → found_pr = PR
+             → found_via = "destination_branch"
+             → Extract PR number
+             → Break inner loop
+             → Break outer loop
 
        If found_pr is None:
          Increment page
          Continue to next page
-         Log: "Checking page {page}..."
+         Log: "✓ Page {page} checked (5 PRs) - no match, continue..."
 
      Catch Error:
        Log: "Error fetching page {page}: {error}"
@@ -745,30 +799,36 @@ PRIMARY METHOD:
        → Extract PR number → Record in execution_status
        → Record: status = "success", fallback_used = false, pages_checked = {page}
 
-       **FRESH DATA CONFIRMATION** (Critical for memory safety):
+       **🟢 FRESH DATA CONFIRMATION** (Critical - NO memory, NO in-memory PR data used):
        Log: "✅ PR found using FRESH Bitbucket API call (mcp1_getPullRequests)"
-       Log: "✅ Fetched 5 PRs per request (pageSize=5) across {pages_checked} page(s)"
-       Log: "   PR Number: {pr_number}"
-       Log: "   PR Title: {pr_title}"
-       Log: "   Source Branch: {pr_source_branch}"
-       Log: "   Current Branch: {current_branch}"
-       Log: "   Branch Match: EXACT ✅"
-       Log: "   Data Source: LIVE Bitbucket (NOT memory, NOT cache)"
-       Log: "   Memory carryover: IMPOSSIBLE (all fields populated fresh)"
+       Log: "✅ Fetched small batches: 5 PRs per request (pageLen=5) across {pages_checked} page(s)"
+       Log: "✅ EXACT BRANCH MATCH (not approximation):"
+       Log: "   - Matched via: {found_via}"
+       Log: "   - PR Number: {pr_number}"
+       Log: "   - PR Title: {pr_title}"
+       Log: "   - Source Branch: {pr_source_branch}"
+       Log: "   - Destination Branch: {pr_destination_branch}"
+       Log: "   - Current Branch: {current_branch}"
+       Log: "   - Branch Match: EXACT ✅ (not from memory, not approximate)"
+       Log: "   - Data Source: LIVE Bitbucket API (NOT memory, NOT cache, NOT in-memory PR)"
+       Log: "   - Memory carryover: IMPOSSIBLE (fetched fresh, no in-memory data reuse)"
 
        Store in execution_status:
          pr_number = {fresh_pr_number}
          pr_title = {fresh_pr_title}
          pr_source_branch = {fresh_source_branch}
-         pr_detection_method = "bitbucket_mcp_fresh"
+         pr_destination_branch = {fresh_destination_branch}
+         pr_detection_method = "bitbucket_mcp_fresh_exact_branch_match"
          fallback_used = false
+         found_via = {found_via}  # Track if source or destination match
 
        → Continue to Step 1
 
      Else (no PR found in any page):
-       Log: "No matching PR found in {page} pages (fetched {page * pageSize} PRs total)"
-       Log: "   Scanned: {page * pageSize} PRs across {page} page(s) with pageSize=5"
-       Log: "   Match: None found for branch '{current_branch}'"
+       Log: "⚠️  No exact matching PR found in {page} pages (scanned {page * pageLen} PRs total)"
+       Log: "   Scanned: {page * pageLen} PRs across {page} page(s) with pageLen=5"
+       Log: "   Exact Match: None found for branch '{current_branch}'"
+       Log: "   Searched: Source branch AND destination branch (both exact match attempts)"
        → Proceed to FALLBACK METHOD
 
 FALLBACK METHOD 1 - Bitbucket API (if Primary fails):

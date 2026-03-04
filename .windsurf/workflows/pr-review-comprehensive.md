@@ -1347,175 +1347,52 @@ VALUES:
 
 **Goal**: Analyze API changes from PR to detect breaking changes, affected endpoints, and consumer impacts
 
-**Implementation**:
-```python
-# Step 4f: API Change Impact Analysis
-# Detects breaking API changes and populates api_changes array
+**Implementation** (NATIVE CASCADE MODEL - NO PYTHON SCRIPTS):
 
-import subprocess
-import json
-import sys
+For each API-related file in the PR (Java REST controllers, Python Flask/FastAPI routes):
 
-def execute_api_impact_analysis():
-    """
-    Execute API impact analysis on PR changes
-    Primary: Uses Bitbucket MCP if available
-    Fallback: Uses git local commands if MCP unavailable (no push/PR creation)
-    All data kept in-memory (JSON format but not written to disk)
-    """
-    all_api_changes = []
-    all_affected_apis = []
-    files_analyzed = 0
-    analysis_method = 'unknown'
+```
+ANALYZE API CHANGES using Cascade model:
 
-    try:
-        # ATTEMPT 1: Try Bitbucket MCP (preferred method)
-        try:
-            from api_impact_analyzer import APIImpactAnalyzer
+1. ENDPOINT DETECTION:
+   For each changed/new file:
+   - Identify REST endpoints (@RequestMapping, @GetMapping, @PostMapping in Java)
+   - Identify Flask/FastAPI routes (@app.route, @router.post in Python)
+   - Extract endpoint path, HTTP method, parameters
+   - Track if endpoint is NEW, MODIFIED, or DELETED
 
-            analyzer = APIImpactAnalyzer()
+2. BREAKING CHANGE DETECTION:
+   For each modified endpoint:
+   - Check if request/response signature changed
+   - Identify removed parameters (breaking change)
+   - Identify required parameters added to request (breaking change)
+   - Check response format changes (breaking change)
+   - Analyze status code changes
+   - Identify authentication/authorization changes
 
-            # Analyze each file in the PR for API changes
-            for file_info in review_data.get('files_reviewed', []):
-                try:
-                    file_path = file_info.get('path', '')
-                    diff_content = file_info.get('diff', '')
+3. API IMPACT ASSESSMENT:
+   - Identify all affected endpoints
+   - Categorize: NEW, MODIFIED, DEPRECATED, DELETED
+   - Assess impact level: HIGH (breaking), MEDIUM (non-breaking change), LOW (addition)
+   - List potential consumer impact
+   - Suggest migration paths for breaking changes
 
-                    if not diff_content:
-                        continue
-
-                    files_analyzed += 1
-
-                    # Extract endpoints from this file's diff
-                    endpoints = analyzer.extract_endpoints_from_diff(diff_content)
-                    if endpoints:
-                        all_affected_apis.extend(endpoints)
-
-                    # Detect breaking changes in this file
-                    breaking_changes, warnings = analyzer.detect_breaking_changes(
-                        old_endpoints=endpoints,
-                        new_endpoints=endpoints,
-                        diff_content=diff_content
-                    )
-
-                    if breaking_changes:
-                        all_api_changes.extend(breaking_changes)
-
-                except Exception:
-                    # Skip this file, continue analyzing others
-                    continue
-
-            analysis_method = 'mcp_bitbucket'
-
-        except (ImportError, AttributeError, Exception) as mcp_error:
-            # ATTEMPT 2: Fallback to git local analysis (no MCP available)
-            import subprocess
-
-            print("⚠️ Bitbucket MCP unavailable, using git local analysis...")
-
-            try:
-                # Get list of changed files from current branch
-                result = subprocess.run(
-                    ['git', 'diff', '--name-only', 'HEAD~1..HEAD'],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-
-                changed_files = result.stdout.strip().split('\n') if result.stdout else []
-
-                # Analyze changed files for API patterns (local analysis only)
-                for file_path in changed_files:
-                    if not file_path or not file_path.endswith(('.java', '.py')):
-                        continue
-
-                    try:
-                        # Get file diff using git
-                        diff_result = subprocess.run(
-                            ['git', 'diff', 'HEAD~1..HEAD', '--', file_path],
-                            capture_output=True,
-                            text=True,
-                            timeout=10
-                        )
-
-                        diff_content = diff_result.stdout
-                        if not diff_content:
-                            continue
-
-                        files_analyzed += 1
-
-                        # Simple pattern matching for API endpoints (no subprocess calls)
-                        # Java: @RequestMapping, @GetMapping, @PostMapping, etc.
-                        # Python: @app.route, @router.get, etc.
-                        if '@RequestMapping' in diff_content or '@GetMapping' in diff_content or \
-                           '@PostMapping' in diff_content or '@PutMapping' in diff_content or \
-                           '@DeleteMapping' in diff_content or '@app.route' in diff_content or \
-                           '@router.' in diff_content:
-                            # Found potential API changes
-                            all_affected_apis.append({
-                                'file': file_path,
-                                'type': 'API_CHANGE_DETECTED',
-                                'note': 'Local analysis - detailed analysis limited'
-                            })
-
-                    except Exception:
-                        # Skip this file, continue
-                        continue
-
-                analysis_method = 'git_local'
-                print("✅ Git local analysis completed")
-
-            except Exception as git_error:
-                # Even git fallback failed - continue with empty data
-                analysis_method = 'git_failed'
-                print(f"⚠️ Git fallback also failed: {git_error}")
-
-        # Directly populate in-memory data structure (NO disk file written)
-        review_data['api_changes'] = all_api_changes
-        review_data['impact_analysis']['affected_apis'] = all_affected_apis
-
-        # Log status with method used
-        breaking_count = len([c for c in all_api_changes if c.get('type') == 'BREAKING'])
-        execution_status['steps']['step_4f'] = {
-            'status': 'success' if (all_api_changes or analysis_method != 'unknown') else 'success_with_limited_data',
-            'apis_detected': len(all_affected_apis),
-            'breaking_changes': breaking_count,
-            'non_breaking_changes': len(all_api_changes) - breaking_count,
-            'files_analyzed': files_analyzed,
-            'method': analysis_method,
-            'note': 'No Bitbucket MCP required, local analysis used' if analysis_method == 'git_local' else None
-        }
-
-    except Exception as e:
-        # Unexpected error - use fallback data but continue workflow
-        review_data['api_changes'] = []
-        review_data['impact_analysis']['affected_apis'] = []
-        execution_status['steps']['step_4f'] = {
-            'status': 'failed_with_fallback',
-            'error': str(e),
-            'apis_detected': 0,
-            'breaking_changes': 0,
-            'fallback_used': True,
-            'method': 'fallback'
-        }
-
-# EXECUTION:
-execute_api_impact_analysis()
+4. OUTPUT STRUCTURE (in-memory only):
+   Store results in analysis_data:
+   - api_changes: Array of all API modifications
+   - impact_analysis.affected_apis: List of changed endpoints
+   - Each change includes: endpoint, method, type, breaking, impact, migration_notes
 ```
 
 **What This Does**:
 
-1. ✅ **Primary**: Uses Bitbucket MCP for API change analysis (if available)
-2. ✅ **Fallback**: Uses git local commands if Bitbucket MCP unavailable
-   - `git diff HEAD~1..HEAD` to get changed files
-   - `git diff` to analyze file contents
-   - NO push or PR creation (local analysis only)
-   - Limited but functional analysis without MCP
-3. ✅ Detects REST endpoints and breaking changes
-4. ✅ Populates `review_data['api_changes']` array (in-memory only, NO disk files)
-5. ✅ Populates `review_data['impact_analysis']['affected_apis']` array
-6. ✅ Handles errors gracefully (uses empty arrays, continues workflow)
-7. ✅ Logs results in execution_status including analysis method used
+1. ✅ **Cascade Native**: Uses Cascade model to analyze API changes (no external scripts)
+2. ✅ **File-Based Detection**: Analyzes changed files for REST endpoint patterns
+3. ✅ **Breaking Change Detection**: Identifies backward-incompatible changes
+4. ✅ **Populates analysis_data['api_changes']** (in-memory only, NO disk files)
+5. ✅ **Populates analysis_data['impact_analysis']['affected_apis']**
+6. ✅ **Graceful Handling**: If no API files found, continues with empty arrays
+7. ✅ **Logs Results**: Records analysis status in execution_status['step_4f']
 
 **Detected Information**:
 
@@ -2984,8 +2861,7 @@ python .windsurf/workflows/templates/report_manager.py {pr_number}
 
    **IMPLEMENTATION** (post to MCP immediately):
    ```python
-   from jira_formatter import format_jira_comment
-   from bitbucket_client import post_jira_comment
+   from jira_formatter import format_jira_comment, post_jira_comment_via_mcp
 
    # Format JIRA comment from in-memory analysis_data (consistent format)
    jira_comment = format_jira_comment(analysis_data)
@@ -3242,38 +3118,38 @@ echo "✅ Found JIRA tickets: $jira_tickets"
 
 #### Step 7b: Post JIRA Comment (with graceful degradation)
 
-```bash
-# Build JIRA comment from analysis results
-JIRA_COMMENT=$(python .windsurf/workflows/templates/build_jira_comment.py \
-  --analysis-data .ai-review/pr-{pr_number}-data.json \
-  --pr-number {pr_number} \
-  --decision {decision} \
-  --issues {issue_count} \
-  --critical {critical_count} \
-  --high {high_count})
+```python
+# Build and post JIRA comment using jira_formatter
+from jira_formatter import format_jira_comment, save_jira_comment, post_jira_comment_via_mcp
 
-# Attempt to post via Bitbucket MCP
-try:
-  # Use Bitbucket MCP if available
-  bitbucket_mcp_post_comment(
-    project_key="{project}",
-    repo_slug="{repo}",
-    pr_id={pr_number},
-    comment=JIRA_COMMENT
-  )
-  echo "✅ JIRA comment posted successfully"
+# Format JIRA comment from analysis results
+jira_comment = format_jira_comment(analysis_data)
 
-catch MCP_UNAVAILABLE:
-  # Graceful degradation: Save comment to file for manual posting
-  echo "$JIRA_COMMENT" > .ai-review/pr-{pr_number}-jira-comment.txt
-  echo "⚠️  JIRA MCP unavailable - comment saved to:"
-  echo "   .ai-review/pr-{pr_number}-jira-comment.txt"
-  echo "   Please post manually in JIRA/Bitbucket"
+# Save to file (for manual posting if MCP fails)
+save_jira_comment(analysis_data, f".ai-review/pr-{pr_number}-jira-comment.txt")
 
-catch POSTING_ERROR:
-  # Log error but continue
-  echo "⚠️  Failed to post JIRA comment: {error}"
-  echo "   Continuing to Step 8..."
+# Extract JIRA ticket from analysis metadata
+jira_ticket = analysis_data.get('metadata', {}).get('jira_ticket')
+
+if jira_ticket:
+  # Attempt to post via Bitbucket MCP (mcp0_postJiraComment)
+  try:
+    # Post via MCP (actual call happens in workflow via mcp0_postJiraComment)
+    posted = post_jira_comment_via_mcp(jira_ticket, jira_comment)
+
+    if posted:
+      print(f"✅ JIRA comment posted to {jira_ticket}")
+    else:
+      print(f"⚠️  Could not post to JIRA {jira_ticket}")
+      print(f"   Comment saved to: .ai-review/pr-{pr_number}-jira-comment.txt")
+  except Exception as e:
+    # Graceful degradation: Comment already saved to file
+    print(f"⚠️  JIRA posting failed: {e}")
+    print(f"   Comment saved for manual posting: .ai-review/pr-{pr_number}-jira-comment.txt")
+else:
+  # No JIRA ticket found
+  print("⚠️  No JIRA ticket found in analysis metadata")
+  print("   Comment saved for manual posting: .ai-review/pr-{pr_number}-jira-comment.txt")
 ```
 
 **JIRA Comment Format** (posted to all identified tickets):
@@ -3698,7 +3574,6 @@ Solution:
    .windsurf/workflows/
    ├── pr-review-comprehensive.html
    └── templates/
-       ├── generate-html.py
        ├── cli_formatter.py
        ├── jira_formatter.py
        └── pr-review-template.html

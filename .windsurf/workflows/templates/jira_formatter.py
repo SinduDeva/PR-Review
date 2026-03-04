@@ -361,37 +361,6 @@ def format_compact_summary(data):
 
     return f"{emoji} PR#{pr}: {critical} critical, {high} high priority issues - {rec}"
 
-def post_jira_comment_via_mcp(jira_ticket, comment_text):
-    """
-    Post JIRA comment via Bitbucket MCP (Atlassian integration)
-
-    Args:
-        jira_ticket: JIRA ticket ID (e.g., 'PROJ-123')
-        comment_text: Comment text to post
-
-    Returns:
-        bool: True if posted successfully, False otherwise
-    """
-    try:
-        # NOTE: This function is designed to be called from Cascade workflow
-        # It uses mcp0_postJiraComment (Atlassian/JIRA MCP)
-        #
-        # Workflow calls this via MCP:
-        # result = mcp0_postJiraComment(ticket="{jira_ticket}", body="{comment_text}")
-        #
-        # This is a wrapper that documents the integration point.
-        # Actual posting happens in the workflow via MCP calls.
-
-        print(f"📤 Posting to JIRA ticket: {jira_ticket}")
-        print(f"   Comment length: {len(comment_text)} chars")
-        print(f"   (Actual posting handled by mcp0_postJiraComment in workflow)")
-
-        return True
-
-    except Exception as e:
-        print(f"⚠️ Error posting to JIRA: {e}")
-        return False
-
 if __name__ == '__main__':
     # NOTE: This script is designed to be imported and used by the workflow.
     # It receives analysis_data directly from workflow execution.

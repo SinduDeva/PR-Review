@@ -2859,21 +2859,31 @@ python .windsurf/workflows/templates/report_manager.py {pr_number}
 
 3. 🔴 PRIORITY 1: POST JIRA COMMENT TO MCP (highest priority - what team sees):
 
-   **IMPLEMENTATION** (post to MCP immediately):
-   ```python
-   from jira_formatter import format_jira_comment, post_jira_comment_via_mcp
+   **IMPLEMENTATION** (post to MCP directly from workflow):
+   ```
+   1. Format JIRA comment:
+      Call: format_jira_comment(analysis_data) from jira_formatter.py
+      → Returns formatted Markdown comment
 
-   # Format JIRA comment from in-memory analysis_data (consistent format)
-   jira_comment = format_jira_comment(analysis_data)
+   2. Post to JIRA via MCP:
+      For each JIRA ticket in analysis_data.get('jira_tickets'):
+        Call: mcp0_postJiraComment(
+          ticket="{ticket_id}",
+          body="{formatted_comment}"
+        )
+        → Posts directly to Bitbucket/JIRA
 
-   # Post to MCP (Bitbucket Cloud JIRA integration)
-   if analysis_data.get('jira_tickets'):
-       for ticket in analysis_data['jira_tickets']:
-           post_jira_comment(ticket, jira_comment)
-           print(f"✅ Posted to JIRA {ticket}")
-   else:
-       print("⚠️ No JIRA tickets found - skipping JIRA post")
-       jira_posted = False
+   3. Handle results:
+      If posted successfully:
+        Log: "✅ Posted to JIRA {ticket}"
+      If posting fails:
+        Log: "⚠️ Could not post to JIRA {ticket}"
+        Continue to next step (graceful degradation)
+
+   4. If no JIRA tickets found:
+      Log: "⚠️ No JIRA tickets found - comment saved to file"
+      Save to: .ai-review/pr-{pr_number}-jira-comment.txt
+      Continue to next step
    ```
 
    **Error Handling**:
@@ -3118,39 +3128,35 @@ echo "✅ Found JIRA tickets: $jira_tickets"
 
 #### Step 7b: Post JIRA Comment (with graceful degradation)
 
-```python
-# Build and post JIRA comment using jira_formatter
-from jira_formatter import format_jira_comment, save_jira_comment, post_jira_comment_via_mcp
+**WORKFLOW CALLS MCP DIRECTLY** (no script wrapper):
 
-# Format JIRA comment from analysis results
-jira_comment = format_jira_comment(analysis_data)
+1. Format JIRA comment:
+   ```python
+   from jira_formatter import format_jira_comment, save_jira_comment
+   jira_comment = format_jira_comment(analysis_data)
+   save_jira_comment(analysis_data, f".ai-review/pr-{pr_number}-jira-comment.txt")
+   ```
 
-# Save to file (for manual posting if MCP fails)
-save_jira_comment(analysis_data, f".ai-review/pr-{pr_number}-jira-comment.txt")
+2. Post via MCP (workflow orchestrates):
+   ```
+   For each JIRA ticket in analysis_data.get('jira_tickets', []):
+     Call: mcp0_postJiraComment(
+       ticket="{ticket_id}",
+       body="{formatted_jira_comment}"
+     )
 
-# Extract JIRA ticket from analysis metadata
-jira_ticket = analysis_data.get('metadata', {}).get('jira_ticket')
+     If successful:
+       Log: "✅ Posted to JIRA {ticket_id}"
+     Else:
+       Log: "⚠️  Could not post to {ticket_id}, comment saved to file"
+       Continue to next ticket (graceful degradation)
 
-if jira_ticket:
-  # Attempt to post via Bitbucket MCP (mcp0_postJiraComment)
-  try:
-    # Post via MCP (actual call happens in workflow via mcp0_postJiraComment)
-    posted = post_jira_comment_via_mcp(jira_ticket, jira_comment)
+   If no tickets:
+     Log: "⚠️  No JIRA tickets found, comment saved to file"
+   ```
 
-    if posted:
-      print(f"✅ JIRA comment posted to {jira_ticket}")
-    else:
-      print(f"⚠️  Could not post to JIRA {jira_ticket}")
-      print(f"   Comment saved to: .ai-review/pr-{pr_number}-jira-comment.txt")
-  except Exception as e:
-    # Graceful degradation: Comment already saved to file
-    print(f"⚠️  JIRA posting failed: {e}")
-    print(f"   Comment saved for manual posting: .ai-review/pr-{pr_number}-jira-comment.txt")
-else:
-  # No JIRA ticket found
-  print("⚠️  No JIRA ticket found in analysis metadata")
-  print("   Comment saved for manual posting: .ai-review/pr-{pr_number}-jira-comment.txt")
-```
+3. Files saved (for manual posting if MCP unavailable):
+   - `.ai-review/pr-{pr_number}-jira-comment.txt`
 
 **JIRA Comment Format** (posted to all identified tickets):
 

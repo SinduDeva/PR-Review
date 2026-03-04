@@ -77,6 +77,42 @@ def format_finding(finding):
 def generate_html_report(analysis_data, output_file):
     """Generate HTML report from analysis_data"""
 
+    # VALIDATION: Ensure ALL analysis data is present (NO SHORTCUTS)
+    print("\n" + "="*70)
+    print("HTML REPORT GENERATION - VALIDATING ALL ANALYSIS DATA")
+    print("="*70)
+
+    required_fields = [
+        'pr_number', 'pr_title', 'pr_author', 'pr_source_branch', 'pr_target_branch',
+        'files_changed', 'files_validated',
+        'findings', 'critical_issues', 'high_issues', 'medium_issues', 'low_issues',
+        'api_changes', 'impact_analysis', 'test_coverage',
+        'decision', 'decision_reason'
+    ]
+
+    missing_fields = []
+    for field in required_fields:
+        if field not in analysis_data:
+            missing_fields.append(field)
+            print(f"❌ MISSING: {field}")
+        elif analysis_data[field] is None:
+            missing_fields.append(field)
+            print(f"❌ NULL: {field}")
+        else:
+            print(f"✅ {field}")
+
+    if missing_fields:
+        raise ValueError(f"INCOMPLETE ANALYSIS DATA - Cannot generate HTML. Missing fields: {missing_fields}")
+
+    findings_count = len(analysis_data.get('findings', []))
+    print(f"\n✅ Analysis validation passed")
+    print(f"   Findings included: {findings_count}")
+    print(f"   Critical: {analysis_data.get('critical_issues', 0)}")
+    print(f"   High: {analysis_data.get('high_issues', 0)}")
+    print(f"   Medium: {analysis_data.get('medium_issues', 0)}")
+    print(f"   Low: {analysis_data.get('low_issues', 0)}")
+    print("="*70 + "\n")
+
     # Extract data with safe defaults
     pr_number = analysis_data.get("pr_number", "UNKNOWN")
     pr_title = escape_html(analysis_data.get("pr_title", "Untitled PR"))
@@ -588,16 +624,39 @@ def main():
         }
 
     # Generate HTML
+    print("\n" + "="*70)
+    print("GENERATING HTML REPORT FROM IN-MEMORY ANALYSIS DATA")
+    print("="*70 + "\n")
+
     output_path = generate_html_report(analysis_data, output_file)
     print(f"✅ HTML report generated: {output_path}")
+
+    # Verify file was created
+    if not os.path.exists(output_path):
+        print(f"❌ ERROR: HTML file not created at {output_path}")
+        return 1
+
+    file_size = os.path.getsize(output_path)
+    print(f"✅ File size: {file_size} bytes (sanity check: complete report)")
 
     # Open in browser if requested
     if open_browser:
         try:
-            webbrowser.open(f"file://{os.path.abspath(output_path)}")
-            print(f"✅ Opened in browser: {output_path}")
+            browser_url = f"file://{os.path.abspath(output_path)}"
+            webbrowser.open(browser_url)
+            print(f"✅ AUTO-OPEN: Report opened in default browser")
+            print(f"   URL: {browser_url}")
         except Exception as e:
-            print(f"⚠️  Could not open browser: {e}")
+            print(f"⚠️  Could not auto-open browser: {e}")
+            print(f"   File available at: {output_path}")
+            print(f"   Please open manually in your browser")
+    else:
+        print(f"✅ Report saved (auto-open disabled)")
+        print(f"   Path: {output_path}")
+
+    print("\n" + "="*70)
+    print("HTML REPORT GENERATION COMPLETE")
+    print("="*70 + "\n")
 
     return 0
 

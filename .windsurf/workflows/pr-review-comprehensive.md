@@ -457,7 +457,7 @@ PRIMARY METHOD:
      - If multiple PRs: Sort by created_on (descending) → Use most recent → Continue to Step 1
      - Record in execution_status: status = "success", fallback_used = false
 
-FALLBACK METHOD (if Primary fails):
+FALLBACK METHOD 1 - Bitbucket API (if Primary fails):
 5. Get PR directly by attempting all branches:
    For {current_branch} or {target_branch}:
      Try:
@@ -465,33 +465,67 @@ FALLBACK METHOD (if Primary fails):
        If succeeds: Extract PR number → Record fallback_used = true → Continue to Step 1
 
    If all attempts fail:
+     Log: "Bitbucket MCP fallback failed, attempting git-based detection"
+     Proceed to FALLBACK METHOD 2
+
+FALLBACK METHOD 2 - Git Local Detection (if MCP fails):
+6. Try to detect PR from git branch and local information:
+   Use: git log, git branch, git remote to gather information
+   - Try to extract PR number from branch name (e.g., "PR-123-feature")
+   - Check for merge commit references in git log
+   - Use git config to find PR tracking info if available
+
+   If git analysis finds PR number:
+     Record in execution_status:
+       status: "success_with_fallback"
+       attempted: 3
+       fallback_used: true
+       method: "git_local_detection"
+     → Continue to Step 1 with extracted PR number
+
+   If git analysis also fails:
      Record in execution_status:
        status: "failed"
-       attempted: 2
+       attempted: 3
        fallback_used: true
-       error: "Unable to auto-detect PR. Primary and fallback methods failed."
+       error: "Unable to auto-detect PR. All methods failed (MCP + Git)."
+     Proceed to FAILURE HANDLING
 
-FAILURE HANDLING (if both methods fail):
-6. Output diagnostics and ABORT WORKFLOW:
+FAILURE HANDLING (if all methods fail - MCP, Bitbucket API, AND Git):
+7. Output diagnostics and ABORT WORKFLOW:
    Output:
    ```
-   ❌ NO PR FOUND - WORKFLOW ABORTED
+   ❌ UNABLE TO IDENTIFY PR - WORKFLOW ABORTED
+
+   All PR detection methods failed:
+   ✗ Bitbucket MCP API (mcp1_getPullRequests)
+   ✗ Bitbucket Fallback API (mcp1_getPullRequest)
+   ✗ Git Local Detection (branch name, git log, git config)
 
    Diagnostics:
    - Current Git branch: '{current_branch}'
    - Workspace: '{workspace}'
    - Repository: '{repo_slug}'
-   - Auto-detection method: FAILED
+   - Bitbucket Status: UNAVAILABLE or NO MATCHING PR
+   - Git Local Analysis: NO PR INFORMATION FOUND
+
+   Possible causes:
+   1. No PR exists for this branch in Bitbucket
+   2. PR is in DRAFT or CLOSED status (must be OPEN)
+   3. Bitbucket MCP server is unavailable/unreachable
+   4. PR number is not embedded in branch name (e.g., "PR-123-feature")
 
    Next steps:
-   1. Create a PR in Bitbucket for this branch
+   1. Ensure a PR exists in Bitbucket for this branch
    2. Ensure PR is in OPEN status (not draft/closed)
-   3. Run workflow again once PR exists
+   3. Verify Bitbucket connectivity and MCP server status
+   4. If using git fallback: Embed PR number in branch name (e.g., "feature/PR-123-description")
+   5. Run workflow again once PR is available and accessible
 
    Note: This is a TERMINAL CONDITION - cannot proceed without valid PR
    ```
 
-7. **UNLOCK WORKFLOW AND ABORT**:
+8. **UNLOCK WORKFLOW AND ABORT**:
    ```bash
    # Release lock before aborting
    python .windsurf/workflows/templates/workflow_lock.py \
@@ -506,7 +540,7 @@ FAILURE HANDLING (if both methods fail):
    Workflow terminates - no steps execute after PR not found
 
 SUCCESS VALIDATION:
-7. Validate extracted PR before proceeding:
+9. Validate extracted PR before proceeding:
    - PR number: extracted correctly and is numeric
    - PR status: verify is "OPEN" (not MERGED, DECLINED, DRAFT)
    - Source branch: matches current_branch

@@ -134,6 +134,7 @@ def generate_html_report(analysis_data, output_file):
     decision_reason = escape_html(analysis_data.get("decision_reason", "Analysis in progress"))
 
     api_changes = analysis_data.get("api_changes", [])
+    impact_analysis = analysis_data.get("impact_analysis", {})
     test_coverage = analysis_data.get("test_coverage", {})
     spring_boot_validation = analysis_data.get("spring_boot_validation", {})
 
@@ -177,17 +178,64 @@ def generate_html_report(analysis_data, output_file):
     else:
         api_html = '<p>No API changes detected</p>'
 
+    # Generate impact analysis HTML
+    impact_html = ""
+    if impact_analysis:
+        # Handle different impact analysis structures
+        if isinstance(impact_analysis, dict):
+            impact_html += '<div class="impact-summary">\n'
+            for key, value in impact_analysis.items():
+                # Skip empty values
+                if not value:
+                    continue
+
+                if isinstance(value, dict):
+                    impact_html += f'<div class="impact-layer">\n'
+                    impact_html += f'<h4>{escape_html(key.replace("_", " ").title())}</h4>\n'
+                    for sub_key, sub_value in value.items():
+                        formatted_key = sub_key.replace("_", " ").title()
+                        impact_html += f'<p><strong>{escape_html(formatted_key)}:</strong> {escape_html(str(sub_value))}</p>\n'
+                    impact_html += '</div>\n'
+                elif isinstance(value, list) and value:
+                    impact_html += f'<div class="impact-layer">\n'
+                    impact_html += f'<h4>{escape_html(key.replace("_", " ").title())}</h4>\n'
+                    impact_html += '<ul style="margin-left: 20px;">\n'
+                    for item in value:
+                        impact_html += f'  <li>{escape_html(str(item))}</li>\n'
+                    impact_html += '</ul>\n'
+                    impact_html += '</div>\n'
+                else:
+                    impact_html += f'<p><strong>{escape_html(key.replace("_", " ").title())}:</strong> {escape_html(str(value))}</p>\n'
+            impact_html += '</div>\n'
+        else:
+            impact_html = f'<p>{escape_html(str(impact_analysis))}</p>'
+    else:
+        impact_html = '<p style="color: #999;">No impact analysis available</p>'
+
     # Generate test coverage HTML
     coverage_html = ""
     if test_coverage:
         overall = test_coverage.get("overall", "N/A")
         unit = test_coverage.get("unit", "N/A")
         integration = test_coverage.get("integration", "N/A")
-        coverage_html = f"""
-        <p><strong>Overall Coverage:</strong> {escape_html(overall)}</p>
-        <p><strong>Unit Tests:</strong> {escape_html(unit)}</p>
-        <p><strong>Integration Tests:</strong> {escape_html(integration)}</p>
-"""
+        coverage_html = f"""<table>
+    <tr>
+        <th>Coverage Type</th>
+        <th>Percentage</th>
+    </tr>
+    <tr>
+        <td><strong>Overall Coverage</strong></td>
+        <td>{escape_html(overall)}</td>
+    </tr>
+    <tr>
+        <td>Unit Tests</td>
+        <td>{escape_html(unit)}</td>
+    </tr>
+    <tr>
+        <td>Integration Tests</td>
+        <td>{escape_html(integration)}</td>
+    </tr>
+</table>"""
     else:
         coverage_html = "<p>No test coverage data available</p>"
 
@@ -197,11 +245,24 @@ def generate_html_report(analysis_data, output_file):
         arch = spring_boot_validation.get("architecture_score", "N/A")
         sec = spring_boot_validation.get("security_score", "N/A")
         perf = spring_boot_validation.get("performance_score", "N/A")
-        springboot_html = f"""
-        <p><strong>Architecture Score:</strong> {escape_html(arch)}</p>
-        <p><strong>Security Score:</strong> {escape_html(sec)}</p>
-        <p><strong>Performance Score:</strong> {escape_html(perf)}</p>
-"""
+        springboot_html = f"""<table>
+    <tr>
+        <th>Validation Category</th>
+        <th>Score</th>
+    </tr>
+    <tr>
+        <td><strong>Architecture</strong></td>
+        <td>{escape_html(arch)}</td>
+    </tr>
+    <tr>
+        <td><strong>Security</strong></td>
+        <td>{escape_html(sec)}</td>
+    </tr>
+    <tr>
+        <td><strong>Performance</strong></td>
+        <td>{escape_html(perf)}</td>
+    </tr>
+</table>"""
     else:
         springboot_html = "<p>No Spring Boot validation data available</p>"
 
@@ -483,6 +544,124 @@ def generate_html_report(analysis_data, output_file):
         .collapsible-content.active {{
             display: block;
         }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }}
+
+        th {{
+            background-color: #f5f5f5;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #1976d2;
+            color: #1976d2;
+        }}
+
+        td {{
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }}
+
+        tr:hover {{
+            background-color: #f9f9f9;
+        }}
+
+        .metrics-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }}
+
+        .metric-box {{
+            background: linear-gradient(135deg, #f5f7fa 0%, #f9fafb 100%);
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #1976d2;
+        }}
+
+        .metric-label {{
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }}
+
+        .metric-value {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #1976d2;
+        }}
+
+        .toc {{
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }}
+
+        .toc h3 {{
+            margin-top: 0;
+            color: #333;
+        }}
+
+        .toc ul {{
+            list-style: none;
+            margin: 10px 0;
+            padding-left: 0;
+        }}
+
+        .toc li {{
+            margin: 8px 0;
+        }}
+
+        .toc a {{
+            color: #1976d2;
+            text-decoration: none;
+            transition: color 0.2s;
+        }}
+
+        .toc a:hover {{
+            color: #135ba1;
+            text-decoration: underline;
+        }}
+
+        .impact-summary {{
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }}
+
+        .impact-layer {{
+            background: #f9f9f9;
+            padding: 15px;
+            border-left: 4px solid #ff9800;
+            margin: 10px 0;
+            border-radius: 4px;
+        }}
+
+        .print-friendly {{
+            page-break-inside: avoid;
+        }}
+
+        @media print {{
+            body {{
+                background-color: white;
+            }}
+            section {{
+                page-break-inside: avoid;
+                box-shadow: none;
+            }}
+            .decision {{
+                page-break-inside: avoid;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -553,6 +732,11 @@ def generate_html_report(analysis_data, output_file):
         <section>
             <h2>🔗 API Changes</h2>
             {api_html}
+        </section>
+
+        <section>
+            <h2>⚡ Impact Analysis</h2>
+            {impact_html}
         </section>
 
         <section>

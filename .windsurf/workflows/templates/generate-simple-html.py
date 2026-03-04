@@ -30,11 +30,113 @@ def escape_html(text):
             .replace("'", '&#39;'))
 
 
+def validate_html(html_content):
+    """
+    Validate HTML structure and content consistency
+
+    Returns: (is_valid, error_message)
+    """
+    if not html_content or not isinstance(html_content, str):
+        return False, "HTML content is empty or invalid type"
+
+    # Check for essential HTML structure
+    if not html_content.strip().startswith('<!DOCTYPE'):
+        return False, "Missing DOCTYPE declaration"
+
+    if '<html>' not in html_content.lower():
+        return False, "Missing <html> tag"
+
+    if '<head>' not in html_content.lower():
+        return False, "Missing <head> tag"
+
+    if '<body>' not in html_content.lower():
+        return False, "Missing <body> tag"
+
+    # Check for matching closing tags
+    open_count = html_content.count('<html')
+    close_count = html_content.count('</html>')
+    if open_count != close_count:
+        return False, "Mismatched <html> tags"
+
+    # Check meta charset
+    if 'charset' not in html_content.lower():
+        return False, "Missing charset meta tag"
+
+    return True, ""
+
+
+def generate_fallback_html(pr_number, error_message):
+    """
+    Generate minimal valid HTML as fallback
+    Used when main generation fails
+    """
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PR #{escape_html(str(pr_number))} - Code Review</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }}
+        .container {{
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 30px;
+        }}
+        .error {{
+            background: #ffebee;
+            border: 1px solid #d32f2f;
+            border-radius: 4px;
+            padding: 20px;
+            color: #d32f2f;
+        }}
+        .footer {{
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #666;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PR #{escape_html(str(pr_number))} - Code Review Report</h1>
+        <div class="error">
+            <strong>⚠️ Report Generation Error</strong>
+            <p>{escape_html(str(error_message))}</p>
+            <p>The automated review encountered an issue generating the detailed HTML report. However, the analysis has been completed and results are available through other channels (JIRA comments, CLI output).</p>
+        </div>
+        <div class="footer">
+            Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} | Automated Code Review
+        </div>
+    </div>
+</body>
+</html>
+"""
+    return html
+
+
 def open_html_in_browser(html_file):
     """
-    Auto-open HTML file in default browser
+    Auto-open HTML file in default browser with retry logic
     Supports Windows, macOS, Linux, Cascade (cloud IDE), and various shells
+
+    Guaranteed to not block workflow - always returns gracefully
     """
+    max_retries = 3
+    retry_delay = 1  # seconds
+
     try:
         html_path = Path(html_file).resolve()
 
@@ -53,46 +155,76 @@ def open_html_in_browser(html_file):
                 print(f"✅ HTML report generated: {html_path}")
                 print(f"📖 Open in browser: file://{html_path}")
                 # Try to open anyway, will fail gracefully
-                try:
-                    import webbrowser
-                    webbrowser.open(f'file://{html_path}')
-                except:
-                    pass
+                for attempt in range(max_retries):
+                    try:
+                        import webbrowser
+                        webbrowser.open(f'file://{html_path}')
+                        return True
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(retry_delay)
+                        else:
+                            pass
                 return True
 
             elif system == "Windows":
-                # Windows: use start or explorer
-                try:
-                    os.startfile(str(html_path))
-                except Exception:
-                    subprocess.Popen(['explorer', str(html_path)])
-                print(f"✅ Opening in default browser: {html_path}")
-                return True
+                # Windows: use start or explorer with retry
+                for attempt in range(max_retries):
+                    try:
+                        os.startfile(str(html_path))
+                        print(f"✅ Opening in default browser: {html_path}")
+                        return True
+                    except Exception:
+                        try:
+                            subprocess.Popen(['explorer', str(html_path)])
+                            print(f"✅ Opening in default browser: {html_path}")
+                            return True
+                        except Exception as e:
+                            if attempt < max_retries - 1:
+                                import time
+                                time.sleep(retry_delay)
+                return False
 
             elif system == "Darwin":
-                # macOS: use open command
-                subprocess.Popen(['open', str(html_path)])
-                print(f"✅ Opening in default browser: {html_path}")
-                return True
+                # macOS: use open command with retry
+                for attempt in range(max_retries):
+                    try:
+                        subprocess.Popen(['open', str(html_path)])
+                        print(f"✅ Opening in default browser: {html_path}")
+                        return True
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(retry_delay)
+                return False
 
             else:
-                # Linux: try xdg-open, then fallback options
-                xdg_open_exists = subprocess.run(['which', 'xdg-open'], capture_output=True).returncode == 0
-
-                if xdg_open_exists:
-                    subprocess.Popen(['xdg-open', str(html_path)])
-                    print(f"✅ Opening in default browser: {html_path}")
-                    return True
-
-                # Fallback: try common browsers
-                browsers = ['firefox', 'chromium', 'google-chrome', 'brave', 'opera']
-                for browser in browsers:
+                # Linux: try xdg-open, then fallback options with retry
+                for attempt in range(max_retries):
                     try:
-                        subprocess.Popen([browser, str(html_path)])
-                        print(f"✅ Opening in {browser}: {html_path}")
-                        return True
-                    except:
-                        pass
+                        xdg_open_exists = subprocess.run(['which', 'xdg-open'], capture_output=True).returncode == 0
+
+                        if xdg_open_exists:
+                            subprocess.Popen(['xdg-open', str(html_path)])
+                            print(f"✅ Opening in default browser: {html_path}")
+                            return True
+
+                        # Fallback: try common browsers
+                        browsers = ['firefox', 'chromium', 'google-chrome', 'brave', 'opera']
+                        for browser in browsers:
+                            try:
+                                subprocess.Popen([browser, str(html_path)])
+                                print(f"✅ Opening in {browser}: {html_path}")
+                                return True
+                            except:
+                                continue
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(retry_delay)
+                        else:
+                            break
 
                 print(f"⚠️  Could not auto-open browser. View manually: {html_path}")
                 return False
@@ -652,6 +784,8 @@ def generate_html_report(data):
 def save_html_report(data, output_file=None, auto_open=True):
     """Save HTML report to file and optionally open in browser
 
+    Guaranteed valid HTML output even if generation fails.
+
     Args:
         data: Analysis data dictionary
         output_file: Optional output path
@@ -660,21 +794,30 @@ def save_html_report(data, output_file=None, auto_open=True):
     Returns:
         output_file path if successful, None otherwise
     """
+    pr_number = data.get('metadata', {}).get('pr_number', 'unknown')
+
+    # Try to generate main HTML
     try:
         html = generate_html_report(data)
+        is_valid, error_msg = validate_html(html)
+
+        if not is_valid:
+            print(f"⚠️ Generated HTML validation failed: {error_msg}")
+            print(f"   Falling back to minimal report")
+            html = generate_fallback_html(pr_number, f"HTML validation failed: {error_msg}")
     except Exception as e:
         print(f"⚠️ Error generating HTML: {e}")
-        html = f"<html><body><h1>Error generating report: {e}</h1></body></html>"
+        print(f"   Generating fallback report")
+        html = generate_fallback_html(pr_number, str(e))
 
     # Determine output file
     if not output_file:
         try:
-            pr_number = data.get('metadata', {}).get('pr_number', 'unknown')
             output_file = f".ai-review/pr-{pr_number}-data.html"
         except Exception:
             output_file = ".ai-review/pr-unknown-data.html"
 
-    # Save HTML
+    # Save HTML (guaranteed valid at this point)
     try:
         os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -688,6 +831,7 @@ def save_html_report(data, output_file=None, auto_open=True):
         return output_file
     except Exception as e:
         print(f"❌ Error saving HTML report: {e}")
+        # Even if file save fails, the analysis is complete
         return None
 
 

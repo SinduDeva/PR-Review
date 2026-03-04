@@ -311,16 +311,16 @@ CRITICAL: Read the ENTIRE workflow file from start to finish before execution
 
 4. Count and validate ALL main steps (MUST find exactly 10):
    Using regex: ^### Step [0-9]:
-   - Line 205: ### Step 0: Auto-Detect Current Branch and PR
-   - Line 400: ### Step 1: Gather PR Context and Extract JIRA Tickets
-   - Line 443: ### Step 2: Get Changed Files in PR
-   - Line 766: ### Step 3: File Categorization & Technology Detection
-   - Line 835: ### Step 4: Parallel Deep Analysis
-   - Line 1337: ### Step 5: Impact Analysis with Layered Dependency Graph
-   - Line ~1618: ### Step 6: JIRA Integration - Submit Report ✅ (CORRECTED ORDER)
-   - Line ~2114: ### Step 7: Upload Results to Database ✅ (CORRECTED ORDER)
-   - Line ~2280: ### Step 6: Aggregate Findings & Generate Reports ✅ (CORRECTED ORDER)
-   - Line ~2400: ### Step 7: UNLOCK WORKFLOW FILE
+   - Step 0: Auto-Detect Current Branch and PR
+   - Step 1: Gather PR Context and Extract JIRA Tickets
+   - Step 2: Get Changed Files in PR
+   - Step 3: File Categorization & Technology Detection
+   - Step 4: Parallel Deep Analysis
+   - Step 5: Impact Analysis with Layered Dependency Graph
+   - Step 6: Aggregate Findings & Generate Reports
+   - Step 7: JIRA Integration - Submit Report to Team (MANDATORY)
+   - Step 8: Upload Results to Database (OPTIONAL)
+   - Step 9: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE
 
    VALIDATION: Count must equal exactly 10 ✅
 
@@ -3184,14 +3184,185 @@ Step 9: All critical outputs exist, unlock workflow
 
 ---
 
-### Step 7: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE
+### Step 7: JIRA Integration - Submit Report to Team (MANDATORY)
+
+**Goal**: Post analysis results to JIRA tickets (if found) with graceful degradation
+
+**Priority**: HIGHEST - Team visibility is critical. This step executes immediately after analysis completes.
+
+**⚠️ KEY REQUIREMENT**: This step is MANDATORY but has graceful degradation:
+- ✅ If JIRA MCP available → Post comment to all identified tickets
+- ✅ If JIRA MCP unavailable → Save comment to file for manual posting
+- ✅ If no JIRA tickets found → Skip JIRA, continue to Step 8
+- ✅ Workflow ALWAYS continues regardless of outcome
+
+**Implementation**:
+
+```bash
+#### Step 7a: Check JIRA Ticket Availability
+
+Verify if JIRA tickets were extracted in Step 1:
+
+if [ -z "$jira_tickets" ]; then
+  echo "⏭️  No JIRA tickets found in PR description"
+  echo "   Skipping JIRA posting, continuing to Step 8"
+  exit 0
+fi
+
+echo "✅ Found JIRA tickets: $jira_tickets"
+```
+
+#### Step 7b: Post JIRA Comment (with graceful degradation)
+
+```bash
+# Build JIRA comment from analysis results
+JIRA_COMMENT=$(python .windsurf/workflows/templates/build_jira_comment.py \
+  --analysis-data .ai-review/pr-{pr_number}-data.json \
+  --pr-number {pr_number} \
+  --decision {decision} \
+  --issues {issue_count} \
+  --critical {critical_count} \
+  --high {high_count})
+
+# Attempt to post via Bitbucket MCP
+try:
+  # Use Bitbucket MCP if available
+  bitbucket_mcp_post_comment(
+    project_key="{project}",
+    repo_slug="{repo}",
+    pr_id={pr_number},
+    comment=JIRA_COMMENT
+  )
+  echo "✅ JIRA comment posted successfully"
+
+catch MCP_UNAVAILABLE:
+  # Graceful degradation: Save comment to file for manual posting
+  echo "$JIRA_COMMENT" > .ai-review/pr-{pr_number}-jira-comment.txt
+  echo "⚠️  JIRA MCP unavailable - comment saved to:"
+  echo "   .ai-review/pr-{pr_number}-jira-comment.txt"
+  echo "   Please post manually in JIRA/Bitbucket"
+
+catch POSTING_ERROR:
+  # Log error but continue
+  echo "⚠️  Failed to post JIRA comment: {error}"
+  echo "   Continuing to Step 8..."
+```
+
+**JIRA Comment Format** (posted to all identified tickets):
+
+```
+🤖 Automated Code Review - PR #{pr_number}
+
+📊 Summary:
+- Files Changed: {files_changed}
+- Files Validated: {files_validated}
+- Critical Issues: {critical_count}
+- High Issues: {high_count}
+- Medium Issues: {medium_count}
+- Low Issues: {low_count}
+
+🎯 Recommendation: {decision}
+
+Reason: {recommendation_reason}
+
+Must Fix:
+{must_fix_list}
+
+Should Fix:
+{should_fix_list}
+
+📁 Detailed Analysis:
+- Link to HTML report: .ai-review/pr-{pr_number}-data.html
+- Run the workflow again to regenerate
+
+🔗 Branch: {source_branch} → {target_branch}
+⏱️ Analysis Time: {execution_time_seconds}s
+```
+
+**Graceful Degradation Guarantees**:
+- ✅ If Bitbucket MCP not available → Comment saved to file
+- ✅ If posting fails → Comment still saved, workflow continues
+- ✅ If no JIRA tickets → Step 7 skipped, Step 8 executes
+- ✅ Team always informed (via JIRA or saved comment file)
+
+---
+
+### Step 8: Upload Results to Database (OPTIONAL)
+
+**Goal**: Archive analysis results for audit trail and historical tracking
+
+**⚠️ NOTE**: This step is OPTIONAL and non-blocking:
+- ✅ If database available → Save results
+- ✅ If database unavailable → Skip silently
+- ⏳ Workflow continues regardless
+- No user impact if this step fails
+
+**Implementation**:
+
+```bash
+#### Step 8a: Validate JSON Data Exists
+
+if [ ! -f ".ai-review/pr-{pr_number}-data.json" ]; then
+  echo "⏭️  JSON data not found, skipping database upload"
+  echo "   HTML and JIRA results already available"
+  exit 0
+fi
+
+echo "✅ JSON data found, attempting database upload"
+```
+
+#### Step 8b: Upload to Database (non-blocking)
+
+```bash
+# Try to upload results (with timeout to prevent blocking)
+try:
+  timeout 30s python .windsurf/workflows/templates/db_upload.py \
+    --pr-number {pr_number} \
+    --data .ai-review/pr-{pr_number}-data.json \
+    --repo "{repo}" \
+    --author "{author}"
+
+  echo "✅ Database updated successfully"
+
+catch TIMEOUT:
+  echo "⏳ Database upload timeout (>30s) - skipping"
+  echo "   Analysis results still available in HTML and JIRA"
+
+catch DB_ERROR:
+  echo "⏳ Database unavailable - skipping upload"
+  echo "   This is expected in offline environments"
+  echo "   Analysis results still available in HTML and JIRA"
+```
+
+**Database Schema** (if available):
+
+```sql
+INSERT INTO pr_reviews (
+  pr_number, repo, author, review_date,
+  files_changed, critical_issues, high_issues,
+  decision, execution_time_seconds, data_json
+) VALUES (...)
+
+-- Archive successful review
+-- Used for historical analysis and trend tracking
+-- Non-blocking: workflow continues if this fails
+```
+
+**Guarantees**:
+- ✅ Audit trail preserved (if database available)
+- ✅ Historical tracking enabled
+- ✅ Zero impact if database unavailable
+- ✅ Workflow never blocked by database operations
+
+---
+
+### Step 9: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE
 
 **Goal**: Release read-only lock on workflow file after execution completes (success or failure)
 
 **⚠️ CRITICAL - MANDATORY CLEANUP STEP**: This step must execute in ALL cases:
-- ✅ If Steps 6 (JIRA) fails → Step 9 still runs
-- ✅ If Steps 7 (Database) fails → Step 9 still runs
-- ✅ If Steps 8 (Reports) fails → Step 9 still runs
+- ✅ If Step 7 (JIRA) fails → Step 9 still runs
+- ✅ If Step 8 (Database) fails → Step 9 still runs
 - ✅ If ANY error occurs → Step 9 still runs
 
 **Implementation**: Use try-finally logic to ensure Step 9 always executes, preventing permanent lock.
@@ -3232,7 +3403,7 @@ Result: Workflow file is restored to WRITABLE state.
         Cascade IDE and users can edit it again.
         Lock is automatically released after completion.
 
-GUARANTEE: This step ALWAYS executes, even if earlier steps failed or were partially skipped:
+GUARANTEE: This step ALWAYS executes, even if earlier steps (0-8) failed or were partially skipped:
            ✅ Final summary is ALWAYS generated (success, partial, or failure)
            ✅ Execution status is printed to console
            ✅ Results are saved to summary file

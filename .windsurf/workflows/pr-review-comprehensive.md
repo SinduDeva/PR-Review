@@ -265,6 +265,52 @@ Step 1-8 failures → Log error, continue to next step
 
 ## Workflow Steps
 
+### 🔴 CRITICAL: NO JSON FILE DEPENDENCY POLICY
+
+**ALL WORKFLOW STEPS FOLLOW THIS POLICY**:
+
+- ✅ **Step 0-5**: Analysis runs in-memory only, NO temporary JSON files
+- ✅ **Step 6**: JIRA posting uses in-memory analysis_data, saves JIRA comment to .txt (NOT JSON)
+- ✅ **Step 7**: HTML report generated from in-memory analysis_data using Python template (NOT JSON)
+- ✅ **Step 8**: Database upload uses in-memory data directly (NOT JSON)
+- ✅ **Step 9**: Cleanup and unlock
+
+**JSON Files**:
+- ❌ NO JSON files written during Steps 0-8
+- ⚠️ OPTIONAL: May archive as backup AFTER Step 8 (not required for any functionality)
+- 📝 JIRA comments saved as .txt files (for manual posting if MCP fails)
+- 📁 HTML reports saved as .html files (template-based, not JSON-dependent)
+
+**Step Execution Order** (MUST follow this order):
+```
+→ Step 0: Fresh PR detection
+  ↓
+→ Step 1: JIRA ticket extraction
+  ↓
+→ Step 2: File retrieval
+  ↓
+→ Step 3: File categorization
+  ↓
+→ Step 4: Code analysis (parallel)
+  ↓
+→ Step 5: Impact analysis
+  ↓
+→ Step 6: JIRA posting (first, in-memory data)
+  ↓
+→ Step 7: HTML generation (second, in-memory data)
+  ↓
+→ Step 8: Database upload (optional, in-memory data)
+  ↓
+→ Step 9: Unlock and complete
+
+⚠️ DO NOT SKIP STEPS
+⚠️ DO NOT CHANGE STEP ORDER
+⚠️ DO NOT USE JSON FOR REPORTS
+⚠️ ALWAYS FOLLOW WORKFLOW AS WRITTEN
+```
+
+---
+
 ### Step 0: Auto-Detect Current Branch and PR (ENHANCED)
 **Goal**: Identify the PR associated with current Git branch
 
@@ -2096,48 +2142,181 @@ For each changed file:
 
 ---
 
-### Step 6: Aggregate Findings & Generate Reports
+### Step 6: JIRA Integration - Submit Report to Team (MANDATORY)
 
-**⚠️ CRITICAL REQUIREMENT**: Steps 0-5 must complete FULLY before Step 8 starts
+**🔴 CRITICAL REQUIREMENT**: Steps 0-5 must complete FULLY before Step 6 starts
 
-This step ONLY executes after all analysis is collected in Steps 0-5.
-Do NOT skip Steps 0-5. All analysis must be complete in-memory before reports can be generated.
+This step executes FIRST after all analysis is collected. JIRA posting has HIGHEST priority.
 
-**Goal**: Create comprehensive, actionable reports with all analysis data
+**Goal**: Post analysis results to JIRA tickets so team has immediate visibility
 
-#### 6a: Consolidate All Analysis Results
-
+**Priority Order Enforcement**:
 ```
-Merge findings from:
-- Spring Boot validation
-- API impact analysis
-- Database impact
-- Test coverage
-- Dependency analysis
-- Security scan
-- Code quality checks
+✅ Step 0: Auto-Detect Current Branch and PR
+✅ Step 1: Gather PR Context and Extract JIRA Tickets
+✅ Step 2: Get Changed Files in PR
+✅ Step 3: File Categorization & Technology Detection
+✅ Step 4: Parallel Deep Analysis
+✅ Step 5: Impact Analysis with Layered Dependency Graph
+➡️  Step 6: JIRA Integration (YOU ARE HERE) ← EXECUTE FIRST AFTER ANALYSIS
+⏭️  Step 7: Aggregate Findings & Generate HTML Reports (EXECUTE AFTER JIRA)
+⏭️  Step 8: Upload Results to Database (OPTIONAL)
+⏭️  Step 9: UNLOCK WORKFLOW FILE
 
-Deduplicate and prioritize by:
-1. CRITICAL - Security, breaking changes, data loss
-2. HIGH - Performance, API changes, missing tests
-3. MEDIUM - Code quality, best practices
-4. LOW - Style, documentation
+DO NOT execute Step 7 or 8 until Step 6 completes.
+DO NOT skip Step 6 - JIRA posting is MANDATORY.
 ```
 
-#### 6b: Build Analysis Data in Memory & Execute in Priority Order
+#### 6a: Check JIRA Ticket Availability
 
-**🔴 CRITICAL - ZERO JSON DEPENDENCY FOR CORE FUNCTIONALITY**
+Verify if JIRA tickets were extracted in Step 1:
 
-**Requirement**: Execute reports in PRIORITY ORDER from **in-memory data only**:
-1. ✅ **JIRA Integration** (POST to MCP immediately) - highest priority, what team sees
-2. ✅ **HTML Report** (generate & auto-open) - user-facing detailed analysis
-3. ✅ **CLI Summary** (print to stdout) - immediate terminal feedback
-4. ⏳ **JSON File Save** (optional, non-blocking) - archival only
-5. ⏳ **Database Update** (optional, only if JSON saved) - audit trail if available
+```bash
+if [ -z "$jira_tickets" ]; then
+  echo "⏭️  No JIRA tickets found in PR description"
+  echo "   Skipping JIRA posting, continuing to Step 7"
+  exit 0
+fi
 
-**KEY CHANGE**: JSON is NOT required for any user-facing functionality. Complete workflow even if JSON/database fails.
+echo "✅ Found JIRA tickets: $jira_tickets"
+```
 
-**MANDATORY FIELDS FOR ALL REPORTS**:
+#### 6b: Post JIRA Comment (with graceful degradation)
+
+**🔴 CRITICAL - NO JSON DEPENDENCY**
+
+**Requirement**: Post analysis results to JIRA using MCP (no JSON files involved):
+
+```python
+from jira_formatter import format_jira_comment, save_jira_comment
+
+# Format JIRA comment from in-memory analysis_data
+jira_comment = format_jira_comment(analysis_data)
+
+# Save comment to .txt file (NOT JSON) for manual posting if MCP fails
+save_jira_comment(analysis_data, f".ai-review/pr-{pr_number}-jira-comment.txt")
+
+# Post via MCP for each JIRA ticket
+for ticket_id in analysis_data.get('jira_tickets', []):
+    try:
+        Call: mcp0_postJiraComment(
+            ticket="{ticket_id}",
+            body="{formatted_jira_comment}"
+        )
+        Log: "✅ Posted to JIRA {ticket_id}"
+    except:
+        Log: "⚠️  Could not post to {ticket_id}, comment saved to .ai-review/pr-{pr_number}-jira-comment.txt"
+        Continue to next ticket (graceful degradation)
+```
+
+**Graceful Degradation Guarantees**:
+- ✅ If JIRA MCP unavailable → Comment saved to .txt file
+- ✅ If posting fails → Continue to next step anyway
+- ✅ If no JIRA tickets → Skip, continue to Step 7
+- ✅ Workflow ALWAYS continues regardless of outcome
+
+**Output**: JIRA comment posted OR saved to file
+
+---
+
+### Step 7: Aggregate Findings & Generate HTML Reports
+
+**🔴 CRITICAL REQUIREMENT**: Step 6 (JIRA) must complete FULLY before Step 7 starts
+
+This step executes AFTER JIRA posting is complete. HTML generation is user-facing.
+
+**Goal**: Create comprehensive, actionable HTML reports with all analysis data
+
+**NO JSON DEPENDENCY**: This step uses in-memory analysis_data and Python templates only.
+
+#### 7a: Consolidate All Analysis Results (IN-MEMORY)
+
+```python
+# NO FILE I/O - All operations on in-memory analysis_data
+
+# Merge findings from all sources
+merged_findings = {
+    'java_issues': analysis_data.get('java_issues', []),
+    'python_issues': analysis_data.get('python_issues', []),
+    'xml_issues': analysis_data.get('xml_issues', []),
+    'yaml_issues': analysis_data.get('yaml_issues', []),
+    'sql_issues': analysis_data.get('sql_issues', []),
+    'property_issues': analysis_data.get('property_issues', []),
+    'api_changes': analysis_data.get('api_changes', []),
+    'security_issues': analysis_data.get('security_issues', []),
+}
+
+# Deduplicate and prioritize by severity
+analysis_data['findings'] = prioritize_findings(merged_findings)
+
+# Count issues by severity
+analysis_data['critical_issues'] = count_by_severity(analysis_data['findings'], 'CRITICAL')
+analysis_data['high_issues'] = count_by_severity(analysis_data['findings'], 'HIGH')
+analysis_data['medium_issues'] = count_by_severity(analysis_data['findings'], 'MEDIUM')
+analysis_data['low_issues'] = count_by_severity(analysis_data['findings'], 'LOW')
+
+print("✅ Analysis consolidated (in-memory, NO JSON files)")
+```
+
+#### 7b: Generate HTML Report Using Python Template (NO JSON)
+
+**🔴 CRITICAL - ZERO JSON FILE DEPENDENCY**
+
+```bash
+# Generate HTML using Python template script
+python .windsurf/workflows/templates/generate_html_report.py \
+  ".ai-review/pr-{pr_number}-analysis.html" \
+  "{pr_number}" \
+  "true"
+
+Expected output:
+  ✅ HTML report generated: .ai-review/pr-{pr_number}-analysis.html
+  ✅ Opened in browser
+
+Key features:
+- No JSON files required
+- In-memory analysis_data is used directly
+- Report is auto-opened in default browser
+- All findings with severity, file, line, fix, impact
+- Collapsible sections for easy navigation
+- Clean, crisp HTML (no rich UI/ASCII codes)
+- Links to JIRA tickets
+- Test coverage summary
+- API changes list
+```
+
+#### 7c: Print CLI Summary
+
+**Display in Cascade and stdout**:
+
+```
+╔════════════════════════════════════════════════════════════════╗
+║                    ANALYSIS COMPLETE                          ║
+╚════════════════════════════════════════════════════════════════╝
+
+📊 Summary:
+  PR Number: {pr_number}
+  Files Changed: {files_changed}
+  Files Analyzed: {files_validated}
+
+🔍 Findings:
+  🔴 Critical: {critical_count}
+  🟠 High: {high_count}
+  🟡 Medium: {medium_count}
+  🟢 Low: {low_count}
+
+📋 Decision: {decision}
+   Reason: {decision_reason}
+
+📁 Reports:
+  ✅ JIRA: Posted to {jira_ticket_count} tickets
+  ✅ HTML: .ai-review/pr-{pr_number}-analysis.html (auto-opened)
+  ✅ TXT: .ai-review/pr-{pr_number}-jira-comment.txt (backup)
+
+⏱️  Analysis completed in {execution_time}s
+```
+
+**MANDATORY FIELDS FOR REPORTS**:
 1. **Code Analysis Data** (from Steps 3-5):
    - `findings[]` - ALL detected issues (bugs, security, performance, architecture)
    - `spring_boot_validation` - Framework-specific analysis
@@ -3305,105 +3484,6 @@ Step 9: All critical outputs exist, unlock workflow
 
 ---
 
-### Step 7: JIRA Integration - Submit Report to Team (MANDATORY)
-
-**Goal**: Post analysis results to JIRA tickets (if found) with graceful degradation
-
-**Priority**: HIGHEST - Team visibility is critical. This step executes immediately after analysis completes.
-
-**⚠️ KEY REQUIREMENT**: This step is MANDATORY but has graceful degradation:
-- ✅ If JIRA MCP available → Post comment to all identified tickets
-- ✅ If JIRA MCP unavailable → Save comment to file for manual posting
-- ✅ If no JIRA tickets found → Skip JIRA, continue to Step 8
-- ✅ Workflow ALWAYS continues regardless of outcome
-
-**Implementation**:
-
-```bash
-#### Step 7a: Check JIRA Ticket Availability
-
-Verify if JIRA tickets were extracted in Step 1:
-
-if [ -z "$jira_tickets" ]; then
-  echo "⏭️  No JIRA tickets found in PR description"
-  echo "   Skipping JIRA posting, continuing to Step 8"
-  exit 0
-fi
-
-echo "✅ Found JIRA tickets: $jira_tickets"
-```
-
-#### Step 7b: Post JIRA Comment (with graceful degradation)
-
-**WORKFLOW CALLS MCP DIRECTLY** (no script wrapper):
-
-1. Format JIRA comment:
-   ```python
-   from jira_formatter import format_jira_comment, save_jira_comment
-   jira_comment = format_jira_comment(analysis_data)
-   save_jira_comment(analysis_data, f".ai-review/pr-{pr_number}-jira-comment.txt")
-   ```
-
-2. Post via MCP (workflow orchestrates):
-   ```
-   For each JIRA ticket in analysis_data.get('jira_tickets', []):
-     Call: mcp0_postJiraComment(
-       ticket="{ticket_id}",
-       body="{formatted_jira_comment}"
-     )
-
-     If successful:
-       Log: "✅ Posted to JIRA {ticket_id}"
-     Else:
-       Log: "⚠️  Could not post to {ticket_id}, comment saved to file"
-       Continue to next ticket (graceful degradation)
-
-   If no tickets:
-     Log: "⚠️  No JIRA tickets found, comment saved to file"
-   ```
-
-3. Files saved (for manual posting if MCP unavailable):
-   - `.ai-review/pr-{pr_number}-jira-comment.txt`
-
-**JIRA Comment Format** (posted to all identified tickets):
-
-```
-🤖 Automated Code Review - PR #{pr_number}
-
-📊 Summary:
-- Files Changed: {files_changed}
-- Files Validated: {files_validated}
-- Critical Issues: {critical_count}
-- High Issues: {high_count}
-- Medium Issues: {medium_count}
-- Low Issues: {low_count}
-
-🎯 Recommendation: {decision}
-
-Reason: {recommendation_reason}
-
-Must Fix:
-{must_fix_list}
-
-Should Fix:
-{should_fix_list}
-
-📁 Detailed Analysis:
-- Link to HTML report: .ai-review/pr-{pr_number}-data.html
-- Run the workflow again to regenerate
-
-🔗 Branch: {source_branch} → {target_branch}
-⏱️ Analysis Time: {execution_time_seconds}s
-```
-
-**Graceful Degradation Guarantees**:
-- ✅ If Bitbucket MCP not available → Comment saved to file
-- ✅ If posting fails → Comment still saved, workflow continues
-- ✅ If no JIRA tickets → Step 7 skipped, Step 8 executes
-- ✅ Team always informed (via JIRA or saved comment file)
-
----
-
 ### Step 8: Upload Results to Database (OPTIONAL)
 
 **Goal**: Archive analysis results for audit trail and historical tracking
@@ -3414,53 +3494,74 @@ Should Fix:
 - ⏳ Workflow continues regardless
 - No user impact if this step fails
 
+**🔴 CRITICAL - ZERO JSON DEPENDENCY**
+
 **Implementation**:
 
 ```bash
-#### Step 8a: Validate JSON Data Exists
+#### Step 8a: Prepare Data for Database Upload (NO JSON FILES)
 
-if [ ! -f ".ai-review/pr-{pr_number}-data.json" ]; then
-  echo "⏭️  JSON data not found, skipping database upload"
-  echo "   HTML and JIRA results already available"
-  exit 0
-fi
+# Use in-memory analysis_data only (NO JSON file dependency)
+# Convert in-memory data to database insert format
 
-echo "✅ JSON data found, attempting database upload"
+preparation_data = {
+    'pr_number': analysis_data.get('pr_number'),
+    'pr_title': analysis_data.get('pr_title'),
+    'pr_author': analysis_data.get('pr_author'),
+    'files_changed': analysis_data.get('files_changed', 0),
+    'critical_issues': analysis_data.get('critical_issues', 0),
+    'high_issues': analysis_data.get('high_issues', 0),
+    'medium_issues': analysis_data.get('medium_issues', 0),
+    'low_issues': analysis_data.get('low_issues', 0),
+    'decision': analysis_data.get('decision'),
+    'decision_reason': analysis_data.get('decision_reason'),
+    'execution_time': analysis_data.get('execution_time_seconds', 0),
+    'html_report_path': '.ai-review/pr-{pr_number}-analysis.html',
+    'jira_comment_path': '.ai-review/pr-{pr_number}-jira-comment.txt',
+}
+
+echo "✅ Data prepared from in-memory analysis_data (NO JSON files used)"
 ```
 
-#### Step 8b: Upload to Database (non-blocking)
+#### Step 8b: Upload to Database (non-blocking, in-memory data)
 
-```bash
-# Try to upload results (with timeout to prevent blocking)
+```python
+# Upload from in-memory preparation_data (NO JSON file required)
 try:
-  timeout 30s python .windsurf/workflows/templates/db_upload.py \
-    --pr-number {pr_number} \
-    --data .ai-review/pr-{pr_number}-data.json \
-    --repo "{repo}" \
-    --author "{author}"
+    timeout 30s python .windsurf/workflows/templates/db_upload.py \
+        --from-memory \
+        --pr-number {pr_number} \
+        --pr-title "{pr_title}" \
+        --files-changed {files_changed} \
+        --critical {critical_issues} \
+        --high {high_issues} \
+        --decision "{decision}" \
+        --execution-time {execution_time}
 
-  echo "✅ Database updated successfully"
+    Log: "✅ Database updated successfully (from in-memory data)"
 
-catch TIMEOUT:
-  echo "⏳ Database upload timeout (>30s) - skipping"
-  echo "   Analysis results still available in HTML and JIRA"
+except TIMEOUT:
+    Log: "⏳ Database upload timeout (>30s) - skipping"
+    Log: "   Analysis results still available in HTML and JIRA"
 
-catch DB_ERROR:
-  echo "⏳ Database unavailable - skipping upload"
-  echo "   This is expected in offline environments"
-  echo "   Analysis results still available in HTML and JIRA"
+except DB_ERROR:
+    Log: "⏳ Database unavailable - skipping upload"
+    Log: "   This is expected in offline environments"
+    Log: "   Analysis results still available in HTML and JIRA"
 ```
 
-**Database Schema** (if available):
+**Database Insert** (from in-memory data):
 
 ```sql
+-- No JSON column required
 INSERT INTO pr_reviews (
-  pr_number, repo, author, review_date,
-  files_changed, critical_issues, high_issues,
-  decision, execution_time_seconds, data_json
+  pr_number, pr_title, repo, author, review_date,
+  files_changed, critical_issues, high_issues, medium_issues, low_issues,
+  decision, reason, execution_time_seconds,
+  html_report_path, jira_comment_path
 ) VALUES (...)
 
--- Archive successful review
+-- Archive metadata only (NO JSON blob)
 -- Used for historical analysis and trend tracking
 -- Non-blocking: workflow continues if this fails
 ```

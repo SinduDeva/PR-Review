@@ -2096,6 +2096,66 @@ For each issue found:
 }
 ```
 
+#### 4h: CONSOLIDATE Step 4 Results → Save to analysis_data
+
+**CRITICAL: All findings from 4a-4g MUST be consolidated and saved**
+
+```python
+# Step 4 Completion - Consolidate all analysis results
+print("\n" + "="*70)
+print("STEP 4 COMPLETION: Consolidating all analysis findings")
+print("="*70)
+
+# Merge all findings from all file types (4a-4g)
+all_findings = []
+
+# Collect from Java analysis (4a)
+java_findings = analysis_data.get('java_issues', [])
+all_findings.extend(java_findings)
+print(f"✅ Step 4a (Java): {len(java_findings)} findings")
+
+# Collect from XML analysis (4b)
+xml_findings = analysis_data.get('xml_issues', [])
+all_findings.extend(xml_findings)
+print(f"✅ Step 4b (XML): {len(xml_findings)} findings")
+
+# Collect from YAML analysis (4c)
+yaml_findings = analysis_data.get('yaml_issues', [])
+all_findings.extend(yaml_findings)
+print(f"✅ Step 4c (YAML): {len(yaml_findings)} findings")
+
+# Collect from SQL analysis (4d)
+sql_findings = analysis_data.get('sql_issues', [])
+all_findings.extend(sql_findings)
+print(f"✅ Step 4d (SQL): {len(sql_findings)} findings")
+
+# Collect from Properties analysis (4e)
+prop_findings = analysis_data.get('property_issues', [])
+all_findings.extend(prop_findings)
+print(f"✅ Step 4e (Properties): {len(prop_findings)} findings")
+
+# Collect from API analysis (4f) - should be in api_changes
+api_findings = analysis_data.get('api_changes', [])
+print(f"✅ Step 4f (API Changes): {len(api_findings)} changes")
+
+# Collect from Test Coverage analysis (4g)
+test_coverage = analysis_data.get('test_coverage', {})
+print(f"✅ Step 4g (Test Coverage): {bool(test_coverage)} data present")
+
+# SAVE consolidated findings to analysis_data
+analysis_data['findings'] = all_findings
+
+print(f"\n🔄 CONSOLIDATED FINDINGS:")
+print(f"   - Total findings: {len(all_findings)}")
+print(f"   - CRITICAL: {len([f for f in all_findings if f.get('severity') == 'CRITICAL'])}")
+print(f"   - HIGH: {len([f for f in all_findings if f.get('severity') == 'HIGH'])}")
+print(f"   - MEDIUM: {len([f for f in all_findings if f.get('severity') == 'MEDIUM'])}")
+print(f"   - LOW: {len([f for f in all_findings if f.get('severity') == 'LOW'])}")
+
+print(f"\n✅ STEP 4 COMPLETE: All findings consolidated and saved to analysis_data['findings']")
+print("="*70 + "\n")
+```
+
 ---
 
 ### Step 5: Impact Analysis with Layered Dependency Graph
@@ -2320,164 +2380,193 @@ For each changed file:
 }
 ```
 
----
+#### 5f: CONSOLIDATE Step 5 Results → Save to analysis_data
 
-## ⚠️ ANALYSIS COMPLETION VALIDATION (NON-BLOCKING)
-
-**NOTE: Validation is informational only - does NOT block Steps 6-9**
-
-**If any fields are missing, defaults will be used. Steps 6-9 always proceed.**
-
-### Validation Phase (Checks completeness, uses defaults if needed)
+**CRITICAL: All impact analysis results MUST be saved to analysis_data**
 
 ```python
-# ANALYSIS COMPLETION VALIDATION GATE (NON-BLOCKING)
-# Runs BEFORE Step 6, logs status but does NOT block progression
-
+# Step 5 Completion - Consolidate all impact analysis results
 print("\n" + "="*70)
-print("ANALYSIS COMPLETION VALIDATION (NON-BLOCKING)")
+print("STEP 5 COMPLETION: Consolidating impact analysis")
 print("="*70)
 
-# Check Step 4 (Code Analysis) for all file types
-print("\n1. CHECKING STEP 4: CODE ANALYSIS STATUS")
-print("   (Missing analyses will use empty defaults)")
+# Extract and save impact analysis results
+impact_analysis = analysis_data.get('impact_analysis', {})
+affected_apis = analysis_data.get('affected_apis', [])
+affected_functionalities = analysis_data.get('affected_functionalities', [])
+overall_recommendation = analysis_data.get('overall_recommendation')
 
-required_analyses = {
-    'java_issues': ("Step 4a: Java Source Code", []),
-    'xml_issues': ("Step 4b: XML Configuration", []),
-    'yaml_issues': ("Step 4c: YAML Configuration", []),
-    'sql_issues': ("Step 4d: SQL Scripts", []),
-    'property_issues': ("Step 4e: Property Files", []),
-    'api_changes': ("Step 4f: API Change Impact", []),
-    'test_coverage': ("Step 4g: Test Coverage", {})
+print(f"✅ Step 5a (Dependency Graph): {bool(impact_analysis)} data present")
+print(f"✅ Step 5b (Impact by Layer): {bool(impact_analysis.get('impact_by_layer'))} data present")
+print(f"✅ Step 5c (Risk Level): {bool(impact_analysis.get('risk_level'))} data present")
+print(f"✅ Step 5d (Critical Paths): {len(impact_analysis.get('critical_paths', []))} paths identified")
+print(f"✅ Step 5e (Affected APIs): {len(affected_apis)} APIs affected")
+
+print(f"\n🔄 IMPACT ANALYSIS SUMMARY:")
+print(f"   - Risk Level: {impact_analysis.get('risk_level', 'UNKNOWN')}")
+print(f"   - Direct Impact: {impact_analysis.get('impact_summary', {}).get('direct_impact', 0)} files")
+print(f"   - Transitive Impact: {impact_analysis.get('impact_summary', {}).get('transitive_impact', 0)} files")
+print(f"   - Total Affected: {impact_analysis.get('impact_summary', {}).get('total_affected_files', 0)} files")
+print(f"   - Affected Functionalities: {len(affected_functionalities)}")
+print(f"   - APIs with changes: {len(affected_apis)}")
+print(f"   - Overall Recommendation: {overall_recommendation or 'Not provided'}")
+
+# Verify all Step 5 fields are populated
+step5_fields = {
+    'impact_analysis': impact_analysis,
+    'affected_apis': affected_apis,
+    'affected_functionalities': affected_functionalities,
+    'overall_recommendation': overall_recommendation
 }
 
-for field, (step_name, default) in required_analyses.items():
-    value = analysis_data.get(field)
+missing_step5 = []
+for field, value in step5_fields.items():
+    if value is None or (isinstance(value, (list, dict)) and len(value) == 0):
+        missing_step5.append(field)
 
-    if value is None or (isinstance(value, (list, dict)) and not value):
-        analysis_data[field] = default
-        print(f"   ⚠️  {step_name}: MISSING (using default)")
-    else:
-        print(f"   ✅ {step_name}: PRESENT")
-
-# Check Step 5 (Impact Analysis)
-print("\n2. CHECKING STEP 5: IMPACT ANALYSIS STATUS")
-
-impact_fields = {
-    'impact_analysis': ("Impact dependency graph", {}),
-    'affected_apis': ("Affected APIs list", []),
-    'affected_functionalities': ("Affected functionalities", []),
-    'overall_recommendation': ("Overall recommendation", "PENDING"),
-    'risk_level': ("Risk level assessment", "UNKNOWN")
-}
-
-for field, (description, default) in impact_fields.items():
-    value = analysis_data.get(field)
-
-    if value is None or (isinstance(value, str) and len(str(value).strip()) == 0):
-        analysis_data[field] = default
-        print(f"   ⚠️  {description}: MISSING (using default)")
-    else:
-        print(f"   ✅ {description}: PRESENT")
-
-# FINDINGS CHECK
-print("\n3. CHECKING FINDINGS COLLECTION")
-
-# Initialize findings if missing
-if 'findings' not in analysis_data:
-    analysis_data['findings'] = []
-    print(f"   ⚠️  findings: NOT INITIALIZED (using empty list)")
+if missing_step5:
+    print(f"\n⚠️  WARNING: Some Step 5 fields are empty: {missing_step5}")
+    print(f"   This may indicate Step 5 analysis did not complete fully")
 else:
-    findings = analysis_data.get('findings', [])
-    print(f"   ✅ Total findings collected: {len(findings)}")
+    print(f"\n✅ All Step 5 analysis fields populated")
 
-# Clean findings - remove any with missing required fields
-findings = analysis_data.get('findings', [])
-valid_findings = []
-for i, finding in enumerate(findings):
-    required_fields = ['severity']  # Only severity is truly required
-    if all(field in finding for field in required_fields):
-        valid_findings.append(finding)
-    else:
-        print(f"   ⚠️  Finding {i}: Missing required fields (skipped)")
-
-analysis_data['findings'] = valid_findings
-print(f"   ✅ Valid findings: {len(valid_findings)}")
-
-# Calculate issue counts from actual findings
-critical_count = len([f for f in valid_findings if f.get('severity') == 'CRITICAL'])
-high_count = len([f for f in valid_findings if f.get('severity') == 'HIGH'])
-medium_count = len([f for f in valid_findings if f.get('severity') == 'MEDIUM'])
-low_count = len([f for f in valid_findings if f.get('severity') == 'LOW'])
-
-analysis_data['critical_issues'] = critical_count
-analysis_data['high_issues'] = high_count
-analysis_data['medium_issues'] = medium_count
-analysis_data['low_issues'] = low_count
-
-print(f"\n4. ISSUE COUNTS (calculated from findings):")
-print(f"   - CRITICAL: {critical_count}")
-print(f"   - HIGH: {high_count}")
-print(f"   - MEDIUM: {medium_count}")
-print(f"   - LOW: {low_count}")
-print(f"   - Total: {len(valid_findings)}")
-
-# MANDATORY FIELDS CHECK (with defaults)
-print("\n5. CHECKING MANDATORY FIELDS (using defaults if missing)")
-
-mandatory_fields_with_defaults = {
-    'pr_number': 'UNKNOWN',
-    'pr_title': 'Code Review Analysis',
-    'pr_author': 'Unknown',
-    'files_changed': 0,
-    'files_validated': 0,
-    'findings': [],
-    'api_changes': [],
-    'test_coverage': {},
-    'impact_analysis': {},
-    'overall_recommendation': 'PENDING',
-    'decision': 'PENDING',
-    'decision_reason': 'Analysis completed'
-}
-
-missing_fields = []
-for field, default in mandatory_fields_with_defaults.items():
-    if field not in analysis_data or analysis_data[field] is None:
-        analysis_data[field] = default
-        missing_fields.append(field)
-        print(f"   ⚠️  {field}: MISSING (using default: {default})")
-    else:
-        print(f"   ✅ {field}: PRESENT")
-
-if missing_fields:
-    print(f"\n   ⚠️  Missing fields: {', '.join(missing_fields)}")
-    print(f"      → Defaults have been applied")
-    print(f"      → Steps 6-9 will proceed with available data")
-
-# FINAL VALIDATION RESULT (NON-BLOCKING)
-print("\n" + "="*70)
-print("✅ VALIDATION COMPLETE - PROCEEDING TO STEPS 6-9")
-print("="*70)
-print("\n📊 Analysis Status Summary:")
-if missing_fields:
-    print(f"   - Some fields were missing (applied {len(missing_fields)} defaults)")
-    print(f"   - Analysis will proceed with available data")
-else:
-    print(f"   - All analysis fields present")
-print(f"   - Total findings: {len(analysis_data.get('findings', []))}")
-print(f"   - Critical issues: {analysis_data.get('critical_issues', 0)}")
-print(f"   - High issues: {analysis_data.get('high_issues', 0)}")
-print(f"   - JIRA comments: Will be prepared")
-print(f"   - HTML report: Will be generated")
-print(f"\n✅ Ready to proceed to Step 6 (JIRA Integration)")
-print(f"✅ Ready to proceed to Step 7 (HTML Report Generation)")
-print(f"✅ Ready to proceed to Step 8 (Database Upload)")
-print(f"✅ Ready to proceed to Step 9 (Workflow Unlock)")
-print("\n" + "="*70 + "\n")
+print(f"\n✅ STEP 5 COMPLETE: All impact analysis saved to analysis_data")
+print("="*70 + "\n")
 ```
 
-**Validation ALWAYS succeeds** - Steps 6-9 will ALWAYS execute with available data (using defaults if needed).
+---
+
+## 🔴 MANDATORY ANALYSIS COMPLETION VALIDATION GATE
+
+**⚠️ CRITICAL: Steps 4-5 MUST complete 100% before Steps 6-9 can proceed**
+
+**This gate BLOCKS Steps 6-9 if analysis is incomplete. This is intentional and correct.**
+
+### Validation Phase (BLOCKS if analysis incomplete - as designed)
+
+```python
+# ANALYSIS COMPLETION VALIDATION GATE
+# Runs BEFORE Step 6, BLOCKS progression if analysis incomplete
+# This is the quality gate ensuring complete analysis before reporting
+
+print("\n" + "="*70)
+print("🔍 ANALYSIS COMPLETION VALIDATION GATE")
+print("="*70)
+print("\nVerifying ALL analysis from Steps 4-5 is complete...")
+print("If any field is missing below, Steps 4-5 need to be RE-RUN.\n")
+
+# Check Step 4 (Code Analysis) for all file types
+print("1️⃣  STEP 4: CODE ANALYSIS - ALL FILE TYPES")
+print("   (Each must complete: Java, XML, YAML, SQL, Properties, Test Coverage)")
+
+required_analyses = {
+    'java_issues': "Step 4a: Java Source Code Analysis",
+    'xml_issues': "Step 4b: XML Configuration Analysis",
+    'yaml_issues': "Step 4c: YAML Configuration Analysis",
+    'sql_issues': "Step 4d: SQL Scripts Analysis",
+    'property_issues': "Step 4e: Property Files Analysis",
+    'api_changes': "Step 4f: API Change Impact Analysis",
+    'test_coverage': "Step 4g: Test Coverage Analysis"
+}
+
+missing_step4 = []
+for field, step_name in required_analyses.items():
+    value = analysis_data.get(field)
+
+    if value is None:
+        print(f"   ❌ {step_name}: NOT EXECUTED (None)")
+        missing_step4.append((field, f"{step_name}: returned None"))
+    elif isinstance(value, (list, dict)) and len(value) == 0:
+        print(f"   ⚠️  {step_name}: No results (empty)")
+    else:
+        print(f"   ✅ {step_name}: Complete")
+
+# Check Step 5 (Impact Analysis)
+print("\n2️⃣  STEP 5: IMPACT ANALYSIS")
+print("   (Dependency graph, affected APIs, functionalities, recommendation)")
+
+impact_fields = {
+    'impact_analysis': "Impact dependency graph",
+    'affected_apis': "Affected APIs list",
+    'affected_functionalities': "Affected functionalities",
+    'overall_recommendation': "Overall recommendation",
+    'risk_level': "Risk level assessment"
+}
+
+missing_step5 = []
+
+for field, description in impact_fields.items():
+    value = analysis_data.get(field)
+
+    if value is None:
+        print(f"   ❌ {description}: NOT EXECUTED (None)")
+        missing_step5.append((field, description))
+    elif isinstance(value, str) and len(str(value).strip()) == 0:
+        print(f"   ❌ {description}: EMPTY STRING")
+        missing_step5.append((field, description))
+    else:
+        print(f"   ✅ {description}: Complete")
+
+# FINDINGS CHECK
+print("\n3️⃣  FINDINGS VALIDATION")
+print("   (Findings must be a non-empty list OR properly marked as 'no issues')")
+
+findings = analysis_data.get('findings')
+
+if findings is None:
+    print(f"   ❌ findings: NOT INITIALIZED (Step 4/5 did not complete)")
+    FAIL_VALIDATION("findings field is None - Steps 4-5 must be re-run")
+elif isinstance(findings, list):
+    print(f"   ✅ findings: {len(findings)} findings collected")
+else:
+    print(f"   ❌ findings: INVALID TYPE (expected list, got {type(findings).__name__})")
+    FAIL_VALIDATION(f"findings must be a list, got {type(findings).__name__}")
+
+# VALIDATION RESULT
+print("\n" + "="*70)
+
+if missing_step4 or missing_step5:
+    print("❌ VALIDATION FAILED - BLOCKING Steps 6-9")
+    print("="*70)
+    print("\n🔴 ANALYSIS INCOMPLETE - Cannot proceed to reporting")
+    print("\nMissing from Step 4 (Code Analysis):")
+    if missing_step4:
+        for field, reason in missing_step4:
+            print(f"   ❌ {reason}")
+    else:
+        print(f"   ✅ All Step 4 analyses completed")
+
+    print("\nMissing from Step 5 (Impact Analysis):")
+    if missing_step5:
+        for field, description in missing_step5:
+            print(f"   ❌ {description}")
+    else:
+        print(f"   ✅ All Step 5 analyses completed")
+
+    print("\n" + "="*70)
+    print("⚠️  ACTION REQUIRED:")
+    print("   1. Review Steps 4-5 execution logs above")
+    print("   2. Identify which analysis steps did NOT complete")
+    print("   3. Check for errors in those specific steps")
+    print("   4. Re-run the workflow to execute Steps 4-5 again")
+    print("   5. Validation will check all fields again")
+    print("="*70 + "\n")
+
+    FAIL("Cannot proceed to Steps 6-9: Analysis incomplete from Steps 4-5")
+else:
+    print("✅ VALIDATION PASSED - ALL ANALYSIS COMPLETE")
+    print("="*70)
+    print("\n✅ Steps 4-5 completed successfully")
+    print(f"✅ Total findings: {len(findings)}")
+    print(f"✅ All required fields populated")
+    print(f"\n→ Proceeding to Step 6 (JIRA Integration)")
+    print(f"→ Proceeding to Step 7 (HTML Report Generation)")
+    print(f"→ Proceeding to Step 8 (Database Upload)")
+    print(f"→ Proceeding to Step 9 (Workflow Unlock)")
+    print("\n" + "="*70 + "\n")
+```
+
+**Validation BLOCKS Steps 6-9 if analysis is incomplete.** This is intentional and correct. All analysis must complete before reports are generated.
 
 ---
 

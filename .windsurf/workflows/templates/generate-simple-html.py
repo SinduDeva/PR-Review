@@ -252,7 +252,6 @@ def generate_simple_html_report(data):
     impact_analysis = data.get('impact_analysis', {})
     positive_obs = data.get('positive_observations', {})
     ai_summary = data.get('ai_summary', {})
-    execution_status = data.get('execution_status', {})
 
     pr_number = metadata.get('pr_number', 'unknown')
     author = metadata.get('author', 'Unknown')
@@ -731,12 +730,49 @@ def generate_simple_html_report(data):
     {f'''
     <!-- IMPACT ANALYSIS -->
     <div class="section">
-        <h2>📊 Impact Analysis</h2>
-        {f'<p><strong>Risk Level:</strong> <span style="color: {{"HIGH": "#d32f2f", "MEDIUM": "#ff6f00", "LOW": "#388e3c"}.get(impact_analysis.get("summary", {{}}).get("risk_level", "UNKNOWN"), "#333")}">{impact_analysis.get("summary", {{}}).get("risk_level", "UNKNOWN")}</span></p>' if impact_analysis.get("summary", {{}}).get("risk_level") else ""}
-        {f"<p><strong>Affected APIs:</strong> {', '.join(impact_analysis.get('summary', {{}}).get('affected_apis', []))}</p>" if impact_analysis.get("summary", {{}}).get("affected_apis") else ""}
-        {f"<p><strong>Affected Components:</strong> {', '.join(impact_analysis.get('summary', {{}}).get('affected_components', []))}</p>" if impact_analysis.get("summary", {{}}).get("affected_components") else ""}
-        {f"<p><strong>Dependency Impact:</strong> {escape_html(impact_analysis.get('summary', {{}}).get('dependency_impact', ''))}</p>" if impact_analysis.get("summary", {{}}).get("dependency_impact") else ""}
-        {f"<p><strong>Transitive Impact:</strong> {escape_html(impact_analysis.get('summary', {{}}).get('transitive_impact', ''))}</p>" if impact_analysis.get("summary", {{}}).get("transitive_impact") else ""}
+        <h2>📊 Impact Analysis (Step 5)</h2>
+
+        {f'''
+        <h3>Risk Assessment</h3>
+        <p><strong>Overall Risk Level:</strong>
+            <span style="color: {{"HIGH": "#d32f2f", "MEDIUM": "#ff6f00", "LOW": "#388e3c"}.get(impact_analysis.get("impact_summary", {{}}).get("risk_level", "UNKNOWN"), "#333")}; font-weight: bold;">
+                {impact_analysis.get("impact_summary", {{}}).get("risk_level", "UNKNOWN")}
+            </span>
+        </p>
+        ''' if impact_analysis.get("impact_summary") else ""}
+
+        {f'''
+        <h3>Impact Breakdown</h3>
+        <ul>
+            <li><strong>Direct Impact:</strong> {impact_analysis.get("impact_summary", {{}}).get("direct_impact", "N/A")} files directly changed</li>
+            <li><strong>Transitive Impact:</strong> {impact_analysis.get("impact_summary", {{}}).get("transitive_impact", "N/A")} files affected (cascading)</li>
+            <li><strong>Total Affected:</strong> {impact_analysis.get("impact_summary", {{}}).get("total_affected_files", "N/A")} files total</li>
+        </ul>
+        ''' if impact_analysis.get("impact_summary") else ""}
+
+        {f'''
+        <h3>Impact by Layer</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background-color: #f5f5f5;">
+                    <th style="text-align: left; padding: 8px; border: 1px solid #ddd;"><strong>Layer</strong></th>
+                    <th style="text-align: center; padding: 8px; border: 1px solid #ddd;"><strong>Files Affected</strong></th>
+                </tr>
+            </thead>
+            <tbody>
+                {f"".join([f'<tr><td style="padding: 8px; border: 1px solid #ddd;">{layer}</td><td style="text-align: center; padding: 8px; border: 1px solid #ddd;">{count}</td></tr>' for layer, count in impact_analysis.get("impact_by_layer", {{}}).items() if count > 0])}
+            </tbody>
+        </table>
+        ''' if impact_analysis.get("impact_by_layer") else ""}
+
+        {f'''
+        <h3>Critical Call Paths Affected</h3>
+        <ul>
+            {f"".join([f'<li><strong>{" → ".join(path.get("path", []))}</strong> [<span style="color: {{"HIGH": "#d32f2f", "MEDIUM": "#ff6f00", "LOW": "#388e3c"}.get(path.get("risk", "UNKNOWN"), "#333")}">{path.get("risk", "UNKNOWN")}</span>]<br/><em>{escape_html(path.get("description", ""))}</em></li>' for path in impact_analysis.get("critical_paths", [])[:3]])}
+        </ul>
+        ''' if impact_analysis.get("critical_paths") else ""}
+
+        {f"<p><strong>Affected APIs:</strong> {', '.join([a.get('endpoint', a) for a in impact_analysis.get('affected_apis', [])])}</p>" if impact_analysis.get("affected_apis") else ""}
     </div>
     ''' if impact_analysis else ""}
 
@@ -758,17 +794,6 @@ def generate_simple_html_report(data):
         {f"<p><strong>Key Takeaways:</strong></p><ul>{''.join([f'<li>{escape_html(t)}</li>' for t in ai_summary.get('key_takeaways', [])])}</ul>" if ai_summary.get("key_takeaways") else ""}
     </div>
     ''' if ai_summary else ""}
-
-    {f'''
-    <!-- EXECUTION STATUS -->
-    <div class="section">
-        <h2>⚙️ Execution Status</h2>
-        {f"<p><strong>Validation Results:</strong> {escape_html(execution_status.get('validation_results', ''))}</p>" if execution_status.get("validation_results") else ""}
-        {f"<p><strong>Warnings:</strong> {escape_html(execution_status.get('warnings', ''))}</p>" if execution_status.get("warnings") else ""}
-        {f"<p><strong>Steps Completed:</strong></p><ul>{''.join([f'<li>{escape_html(s)}</li>' for s in execution_status.get('steps_completed', [])])}</ul>" if execution_status.get("steps_completed") else ""}
-        {f"<p><strong>Execution Time:</strong> {metadata.get('execution_time', 'N/A')}</p>" if metadata.get("execution_time") else ""}
-    </div>
-    ''' if execution_status else ""}
 
 </div>
 

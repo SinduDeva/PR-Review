@@ -54,35 +54,37 @@ def format_jira_comment(data):
     comment.append("----")
     comment.append("")
 
-    # Add large PR note if pagination was used
-    pagination = data.get('pagination_metadata', {})
-    if pagination.get('pages_fetched', 1) > 1:
-        comment.append("*Note:* Large PR analyzed across {} API pages ({} files total)".format(
-            pagination['pages_fetched'],
-            pagination['total_items_retrieved']
-        ))
-        comment.append("")
-
     # Critical Issues
     critical_findings = [f for f in findings if f['severity'] in ['CRITICAL', 'HIGH']]
     
     if critical_findings:
-        comment.append(f"h3. 🔴 Critical & High Priority Issues ({len(critical_findings)})")
-        comment.append("")
-        
-        for finding in critical_findings[:5]:  # Show top 5
-            severity_color = 'red' if finding['severity'] == 'CRITICAL' else 'orange'
-            
-            comment.append(f"h4. {finding['id']}: {finding['title']}")
-            comment.append(f"*Severity:* {{color:{severity_color}}}{finding['severity']}{{color}}")
-            comment.append(f"*File:* {{{{monospace}}}}{finding['file']}:{finding['line']}{{{{monospace}}}}")
-            comment.append(f"*Impact:* {finding['impact']}")
-            comment.append(f"*Suggested Fix:* {finding['suggestion']}")
+        # Separate critical and high
+        critical_only = [f for f in critical_findings if f['severity'] == 'CRITICAL']
+        high_only = [f for f in critical_findings if f['severity'] == 'HIGH']
+
+        if critical_only:
+            comment.append(f"h3. 🔴 CRITICAL Issues ({len(critical_only)})")
             comment.append("")
-        
-        if len(critical_findings) > 5:
-            comment.append(f"_{len(critical_findings) - 5} more issues in full report_")
+
+            for finding in critical_only:
+                comment.append(f"h4. {finding['id']}: {finding['title']}")
+                comment.append(f"*Severity:* {{color:red}}CRITICAL{{color}}")
+                comment.append(f"*File:* {{{{monospace}}}}{finding['file']}:{finding['line']}{{{{monospace}}}}")
+                comment.append(f"*Impact:* {finding['impact']}")
+                comment.append(f"*Suggested Fix:* {finding['suggestion']}")
+                comment.append("")
+
+        if high_only:
+            comment.append(f"h3. 🟠 HIGH Priority Issues ({len(high_only)})")
             comment.append("")
+
+            for finding in high_only:
+                comment.append(f"h4. {finding['id']}: {finding['title']}")
+                comment.append(f"*Severity:* {{color:orange}}HIGH{{color}}")
+                comment.append(f"*File:* {{{{monospace}}}}{finding['file']}:{finding['line']}{{{{monospace}}}}")
+                comment.append(f"*Impact:* {finding['impact']}")
+                comment.append(f"*Suggested Fix:* {finding['suggestion']}")
+                comment.append("")
     else:
         comment.append("h3. ✅ No Critical or High Priority Issues")
         comment.append("")
@@ -208,7 +210,56 @@ def format_jira_comment(data):
             comment.append("")
             comment.append("----")
             comment.append("")
-    
+
+    # Impact Analysis (Step 5)
+    impact_summary = impact_analysis.get('impact_summary', {})
+    if impact_summary:
+        comment.append("h3. 📊 Impact Analysis")
+        comment.append("")
+
+        # Risk level
+        risk_level = impact_summary.get('risk_level', 'UNKNOWN')
+        risk_color = 'red' if risk_level == 'HIGH' else 'orange' if risk_level == 'MEDIUM' else 'green'
+        comment.append(f"*Overall Risk Level:* {{color:{risk_color}}}{risk_level}{{color}}")
+        comment.append("")
+
+        # Impact summary
+        if impact_summary.get('direct_impact') is not None or impact_summary.get('transitive_impact') is not None or impact_summary.get('total_affected_files') is not None:
+            comment.append("*Impact Breakdown:*")
+            if impact_summary.get('direct_impact') is not None:
+                comment.append(f"* Direct Impact: {impact_summary['direct_impact']} files")
+            if impact_summary.get('transitive_impact') is not None:
+                comment.append(f"* Transitive Impact: {impact_summary['transitive_impact']} files (cascading)")
+            if impact_summary.get('total_affected_files') is not None:
+                comment.append(f"* Total Affected: {impact_summary['total_affected_files']} files")
+            comment.append("")
+
+        # Impact by layer
+        impact_by_layer = impact_analysis.get('impact_by_layer', {})
+        if impact_by_layer:
+            comment.append("*Impact by Layer:*")
+            comment.append("|| Layer || Files Affected ||")
+            for layer in ['CONTROLLER', 'SERVICE', 'REPOSITORY', 'MODEL', 'UTILITY', 'CONFIG']:
+                count = impact_by_layer.get(layer, 0)
+                if count > 0:
+                    comment.append(f"| {layer} | {count} |")
+            comment.append("")
+
+        # Critical paths
+        critical_paths = impact_analysis.get('critical_paths', [])
+        if critical_paths:
+            comment.append("*Critical Call Paths Affected:*")
+            for path_info in critical_paths[:3]:  # Show top 3 critical paths
+                path_str = " → ".join(path_info.get('path', []))
+                risk = path_info.get('risk', 'UNKNOWN')
+                comment.append(f"* {path_str} [{{color:{('red' if risk == 'HIGH' else 'orange' if risk == 'MEDIUM' else 'green')}}}{risk}{{color}}]")
+                if path_info.get('description'):
+                    comment.append(f"  _{path_info['description']}_")
+            comment.append("")
+
+        comment.append("----")
+        comment.append("")
+
     # Recommendations
     comment.append("h3. ✅ Recommendation")
     comment.append("")

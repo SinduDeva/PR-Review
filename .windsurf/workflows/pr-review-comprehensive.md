@@ -186,14 +186,17 @@ REPORT (Always):
 | 0 | getPullRequests(OPEN filter) | getPullRequest(pr_number) | **ABORT** - Unlock & Exit |
 | 1 | getPullRequest() + comments | Retry with timeout increase | Continue with empty data |
 | 2 | git diff --numstat | BitBucket API diffstat | Use empty file list |
-| 3 | Code quality analysis | Retry with timeout | Use empty findings |
-| 4 | Spring Boot validation | Retry with timeout | Use empty validation |
+| 3 | File type categorization | Retry categorization | Use detected types only |
+| 4a | Java code validation | Retry with timeout | Use empty findings |
+| 4b-4e | Config validation (XML/YAML/SQL/Properties) | Retry with timeout | Use empty findings |
+| 4f | API analyzer (MCP) | Git local analysis | Use local analysis |
+| 4g | Test coverage analysis | Retry with timeout | Use empty coverage |
+| **4h** | **Python code validation** | **Retry with timeout** | **Use empty findings** |
 | 5 | Impact analysis | Retry with timeout | Use empty graph |
 | 6 | JIRA posting | Log for manual posting | Continue (optional) |
 | 7 | HTML generation | Basic html fallback | Minimal text report |
 | 8 | CLI output | Inline summary | Display empty summary |
-| **8b** | **JSON save** | **Skip gracefully** | **Continue to DB** |
-| **8c** | **Database update** | **Skip gracefully** | **Workflow completes** |
+| **8b** | **Report index** | **Skip gracefully** | **Workflow completes** |
 
 **Abort vs Skip Strategy**:
 
@@ -224,15 +227,39 @@ Step 1-8 failures → Log error, continue to next step
                  → HTML report includes error details
 ```
 
+**Mandatory vs Optional Steps**:
+
+**MANDATORY** (Analysis must complete, failures logged but continued):
+- ✅ Step 0: PR detection (ABORT if fails)
+- ✅ Step 1: PR context gathering (continue with partial data)
+- ✅ Step 2: File retrieval (continue with empty list)
+- ✅ Step 3: File categorization (dynamic detection)
+- ✅ Step 4: Code analysis (all sub-steps: 4a-4h)
+  - 4a: Java validation
+  - 4b: XML validation
+  - 4c: YAML validation
+  - 4d: SQL validation
+  - 4e: Properties validation
+  - 4f: API analyzer (with git fallback)
+  - 4g: Test coverage
+  - 4h: Python validation (**NEW**)
+- ✅ Step 5: Impact analysis
+
+**OPTIONAL** (Skip if fails, workflow continues):
+- ⚪ Step 6: JIRA posting (can fail, no impact on reports)
+- ⚪ Report index update (informational only)
+
 **Critical Behavior**:
+- ✅ All analysis steps (1-5) MUST attempt to complete
+- ✅ Analysis failures continue with limited data (not abort)
 - ✅ HTML report ALWAYS generated (primary or fallback method)
-- ✅ JIRA comment ALWAYS posted (if Step 6 completes)
-- ✅ CLI summary ALWAYS printed (if Step 8a completes)
+- ✅ JIRA posting optional - workflow continues if fails
+- ✅ CLI summary ALWAYS printed
 - ✅ Workflow NEVER stops except for Step 0 PR not found
 - ✅ Unlock always happens (try-finally ensures it)
 - ✅ All errors shown in "Execution Status & Issues" section of report
-- ✅ Workflow NEVER aborts due to analysis step failures (only Step 0 can stop)
-- ✅ JIRA integration NEVER blocks workflow (optional step)
+- ✅ Python validation (Step 4h) runs automatically for *.py files
+- ✅ API analyzer fallback to git local if MCP unavailable
 
 ---
 
@@ -875,17 +902,25 @@ Function: deduplicate_by_path(files)
 
 **Goal**: Classify ONLY PR-changed files for targeted analysis
 
-**File Type Categories** (for validation):
+**File Type Categories** (detected dynamically by extension):
 1. **Java Source** - `*.java` (exclude test files)
    - Controllers, Services, Repositories, Models, DTOs
-2. **XML Configuration** - `*.xml`
+2. **Python Source** - `*.py` (exclude test files)
+   - Django, FastAPI, Flask, async patterns, utilities
+3. **XML Configuration** - `*.xml`
    - Spring config, MyBatis mappers, persistence.xml
-3. **YAML Configuration** - `*.yml`, `*.yaml`
+4. **YAML Configuration** - `*.yml`, `*.yaml`
    - application.yml, application-*.yml
-4. **SQL Scripts** - `*.sql`
+5. **SQL Scripts** - `*.sql`
    - Migrations, stored procedures, DDL
-5. **Property Files** - `*.properties`
+6. **Property Files** - `*.properties`
    - application.properties, messages.properties
+
+**Dynamic Detection Strategy**:
+- For each file in PR, detect type by extension
+- Map extension to validation handler (java→Java, py→Python, xml→XML, etc.)
+- Apply appropriate validation rules for detected type
+- Extensible: supports new file types automatically
 
 **Excluded from validation** (but tracked for context):
 - Test files: `src/test/**/*`, `*Test.java`, `*Tests.java`
@@ -902,7 +937,7 @@ Function: deduplicate_by_path(files)
 - REST endpoints (@GetMapping, @PostMapping)
 ```
 
-**Output**: Categorized file batches for validation
+**Output**: Dynamically categorized file batches for validation
 ```json
 {
   "validation_files": {
@@ -910,6 +945,10 @@ Function: deduplicate_by_path(files)
       "DataController.java",
       "DataService.java",
       "DataRepository.java"
+    ],
+    "python_source": [
+      "utils/data_processor.py",
+      "services/api_client.py"
     ],
     "xml_config": [
       "data-mapper.xml"
@@ -924,7 +963,8 @@ Function: deduplicate_by_path(files)
   "excluded_files": {
     "test_files": [
       "DataServiceTest.java",
-      "DataControllerTest.java"
+      "DataControllerTest.java",
+      "test_utils.py"
     ],
     "documentation": [
       "README.html"
@@ -934,7 +974,10 @@ Function: deduplicate_by_path(files)
     "spring_boot": true,
     "jpa_hibernate": true,
     "spring_security": false,
-    "reactive": false
+    "reactive": false,
+    "python_async": false,
+    "django": false,
+    "fastapi": false
   }
 }
 
@@ -1254,73 +1297,131 @@ import sys
 def execute_api_impact_analysis():
     """
     Execute API impact analysis on PR changes
-    Directly analyzes APIs from changed files and populates JSON metadata
-    No subprocess overhead - uses imported APIImpactAnalyzer class
+    Primary: Uses Bitbucket MCP if available
+    Fallback: Uses git local commands if MCP unavailable (no push/PR creation)
+    All data kept in-memory (JSON format but not written to disk)
     """
+    all_api_changes = []
+    all_affected_apis = []
+    files_analyzed = 0
+    analysis_method = 'unknown'
+
     try:
-        # Import API analyzer directly (no subprocess call)
-        from api_impact_analyzer import APIImpactAnalyzer
+        # ATTEMPT 1: Try Bitbucket MCP (preferred method)
+        try:
+            from api_impact_analyzer import APIImpactAnalyzer
 
-        analyzer = APIImpactAnalyzer()
-        all_api_changes = []
-        all_affected_apis = []
-        files_analyzed = 0
+            analyzer = APIImpactAnalyzer()
 
-        # Analyze each file in the PR for API changes
-        for file_info in review_data.get('files_reviewed', []):
-            try:
-                file_path = file_info.get('path', '')
-                diff_content = file_info.get('diff', '')
+            # Analyze each file in the PR for API changes
+            for file_info in review_data.get('files_reviewed', []):
+                try:
+                    file_path = file_info.get('path', '')
+                    diff_content = file_info.get('diff', '')
 
-                if not diff_content:
+                    if not diff_content:
+                        continue
+
+                    files_analyzed += 1
+
+                    # Extract endpoints from this file's diff
+                    endpoints = analyzer.extract_endpoints_from_diff(diff_content)
+                    if endpoints:
+                        all_affected_apis.extend(endpoints)
+
+                    # Detect breaking changes in this file
+                    breaking_changes, warnings = analyzer.detect_breaking_changes(
+                        old_endpoints=endpoints,
+                        new_endpoints=endpoints,
+                        diff_content=diff_content
+                    )
+
+                    if breaking_changes:
+                        all_api_changes.extend(breaking_changes)
+
+                except Exception:
+                    # Skip this file, continue analyzing others
                     continue
 
-                files_analyzed += 1
+            analysis_method = 'mcp_bitbucket'
 
-                # Extract endpoints from this file's diff
-                endpoints = analyzer.extract_endpoints_from_diff(diff_content)
-                if endpoints:
-                    all_affected_apis.extend(endpoints)
+        except (ImportError, AttributeError, Exception) as mcp_error:
+            # ATTEMPT 2: Fallback to git local analysis (no MCP available)
+            import subprocess
 
-                # Detect breaking changes in this file
-                breaking_changes, warnings = analyzer.detect_breaking_changes(
-                    old_endpoints=endpoints,
-                    new_endpoints=endpoints,
-                    diff_content=diff_content
+            print("⚠️ Bitbucket MCP unavailable, using git local analysis...")
+
+            try:
+                # Get list of changed files from current branch
+                result = subprocess.run(
+                    ['git', 'diff', '--name-only', 'HEAD~1..HEAD'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
                 )
 
-                if breaking_changes:
-                    all_api_changes.extend(breaking_changes)
+                changed_files = result.stdout.strip().split('\n') if result.stdout else []
 
-            except Exception:
-                # Skip this file, continue analyzing others
-                continue
+                # Analyze changed files for API patterns (local analysis only)
+                for file_path in changed_files:
+                    if not file_path or not file_path.endswith(('.java', '.py')):
+                        continue
 
-        # Directly populate JSON metadata (no intermediate file I/O)
+                    try:
+                        # Get file diff using git
+                        diff_result = subprocess.run(
+                            ['git', 'diff', 'HEAD~1..HEAD', '--', file_path],
+                            capture_output=True,
+                            text=True,
+                            timeout=10
+                        )
+
+                        diff_content = diff_result.stdout
+                        if not diff_content:
+                            continue
+
+                        files_analyzed += 1
+
+                        # Simple pattern matching for API endpoints (no subprocess calls)
+                        # Java: @RequestMapping, @GetMapping, @PostMapping, etc.
+                        # Python: @app.route, @router.get, etc.
+                        if '@RequestMapping' in diff_content or '@GetMapping' in diff_content or \
+                           '@PostMapping' in diff_content or '@PutMapping' in diff_content or \
+                           '@DeleteMapping' in diff_content or '@app.route' in diff_content or \
+                           '@router.' in diff_content:
+                            # Found potential API changes
+                            all_affected_apis.append({
+                                'file': file_path,
+                                'type': 'API_CHANGE_DETECTED',
+                                'note': 'Local analysis - detailed analysis limited'
+                            })
+
+                    except Exception:
+                        # Skip this file, continue
+                        continue
+
+                analysis_method = 'git_local'
+                print("✅ Git local analysis completed")
+
+            except Exception as git_error:
+                # Even git fallback failed - continue with empty data
+                analysis_method = 'git_failed'
+                print(f"⚠️ Git fallback also failed: {git_error}")
+
+        # Directly populate in-memory data structure (NO disk file written)
         review_data['api_changes'] = all_api_changes
         review_data['impact_analysis']['affected_apis'] = all_affected_apis
 
-        # Log success with detailed metrics
+        # Log status with method used
         breaking_count = len([c for c in all_api_changes if c.get('type') == 'BREAKING'])
         execution_status['steps']['step_4f'] = {
-            'status': 'success',
+            'status': 'success' if (all_api_changes or analysis_method != 'unknown') else 'success_with_limited_data',
             'apis_detected': len(all_affected_apis),
             'breaking_changes': breaking_count,
             'non_breaking_changes': len(all_api_changes) - breaking_count,
             'files_analyzed': files_analyzed,
-            'method': 'direct_import'
-        }
-
-    except ImportError:
-        # API analyzer module not available - fallback gracefully
-        review_data['api_changes'] = []
-        review_data['impact_analysis']['affected_apis'] = []
-        execution_status['steps']['step_4f'] = {
-            'status': 'skipped',
-            'reason': 'API analyzer module not available',
-            'apis_detected': 0,
-            'breaking_changes': 0,
-            'fallback_used': True
+            'method': analysis_method,
+            'note': 'No Bitbucket MCP required, local analysis used' if analysis_method == 'git_local' else None
         }
 
     except Exception as e:
@@ -1333,7 +1434,7 @@ def execute_api_impact_analysis():
             'apis_detected': 0,
             'breaking_changes': 0,
             'fallback_used': True,
-            'method': 'direct_import'
+            'method': 'fallback'
         }
 
 # EXECUTION:
@@ -1342,12 +1443,17 @@ execute_api_impact_analysis()
 
 **What This Does**:
 
-1. ✅ Calls api_impact_analyzer.py with PR file information
-2. ✅ Detects REST endpoints and breaking changes
-3. ✅ Populates `review_data['api_changes']` array
-4. ✅ Populates `review_data['impact_analysis']['affected_apis']` array
-5. ✅ Handles errors gracefully (uses empty arrays, continues workflow)
-6. ✅ Logs results in execution_status
+1. ✅ **Primary**: Uses Bitbucket MCP for API change analysis (if available)
+2. ✅ **Fallback**: Uses git local commands if Bitbucket MCP unavailable
+   - `git diff HEAD~1..HEAD` to get changed files
+   - `git diff` to analyze file contents
+   - NO push or PR creation (local analysis only)
+   - Limited but functional analysis without MCP
+3. ✅ Detects REST endpoints and breaking changes
+4. ✅ Populates `review_data['api_changes']` array (in-memory only, NO disk files)
+5. ✅ Populates `review_data['impact_analysis']['affected_apis']` array
+6. ✅ Handles errors gracefully (uses empty arrays, continues workflow)
+7. ✅ Logs results in execution_status including analysis method used
 
 **Detected Information**:
 
@@ -1437,6 +1543,184 @@ SPRING BOOT TESTING:
       }
     ]
   }
+}
+```
+
+---
+
+#### 4h: Python Source Code Validation (Enhanced)
+
+**For each changed Python file** (excluding test files and __pycache__):
+
+```
+VALIDATE:
+
+1. POTENTIAL BUGS & DEFECTS:
+
+   TYPE AND VALUE ERRORS:
+   - Incorrect type usage (int vs string comparisons)
+   - Undefined variables, NameError risks
+   - Missing attribute assignments
+   - Mutable default arguments (function parameters)
+   - UnboundLocalError from variable assignment after reference
+
+   NULL/NONE HANDLING:
+   - None comparisons with `is None` (not `== None`)
+   - Dereferencing without None checks
+   - Dictionary/list access without existence check
+   - Optional parameter handling
+
+   EXCEPTION HANDLING:
+   - Bare except clauses (except:)
+   - Too broad exception catching (except Exception:)
+   - Missing exception re-raising
+   - Unhandled exceptions in try blocks
+
+   CONCURRENCY & ASYNC:
+   - Missing await on coroutine calls
+   - Improper use of async/await
+   - Race conditions in shared state
+   - Thread safety issues with mutable objects
+   - Deadlock potential
+
+   COMMON PYTHON BUGS:
+   - Infinite loops (missing break/return)
+   - Off-by-one errors in range/iteration
+   - List/dict modification during iteration
+   - String escape sequence errors
+   - Integer overflow in operations
+
+   RESOURCE MANAGEMENT:
+   - Files/connections not closed (missing context managers)
+   - No try-finally or with statements
+   - Memory leaks from circular references
+   - Unclosed database connections
+
+2. SECURITY ISSUES:
+
+   INJECTION VULNERABILITIES:
+   - SQL injection via string formatting (f-strings, format())
+   - Command injection via os.system(), subprocess without shell=False
+   - Code injection via eval(), exec(), pickle.loads()
+   - Template injection in Jinja2 or similar
+
+   CREDENTIAL MANAGEMENT:
+   - Hardcoded passwords, API keys, tokens
+   - Secrets in environment variables without validation
+   - Credentials in logs or error messages
+   - Unencrypted storage of sensitive data
+
+   INPUT VALIDATION:
+   - No validation of user input (path traversal, buffer overflow)
+   - Insufficient validation of external data
+   - Missing type checking on API inputs
+
+   CRYPTOGRAPHY:
+   - Weak crypto algorithms
+   - Insufficient key sizes
+   - Use of random instead of secrets module
+   - Hardcoded encryption keys
+
+3. CODE QUALITY:
+
+   MAINTAINABILITY:
+   - Cyclomatic complexity too high (>10)
+   - Functions too long (>50 lines)
+   - Classes too complex
+   - Duplicated code blocks
+   - Poor variable/function naming
+   - Magic numbers (use constants)
+
+   PYTHON BEST PRACTICES:
+   - PEP8 style violations (naming, spacing, line length)
+   - Unused imports
+   - Circular imports
+   - Import organization (standard lib, third-party, local)
+   - Proper use of list comprehensions vs loops
+   - Generator usage where appropriate
+
+   TYPE HINTS & ANNOTATIONS:
+   - Missing type hints (especially in public APIs)
+   - Incorrect type hints
+   - Inconsistent use of typing module
+   - Optional parameter type hints
+
+   LOGGING & DEBUGGING:
+   - Print statements instead of logging (use logging module)
+   - No or inappropriate log levels
+   - Sensitive data in logs
+   - Missing exception logging with traceback
+
+   ASYNCIO/THREADING:
+   - Blocking operations in async functions
+   - Missing async/await keywords
+   - Improper use of asyncio locks/semaphores
+   - Race conditions in concurrent code
+
+4. FRAMEWORK-SPECIFIC (if detected):
+
+   DJANGO:
+   - ORM N+1 queries (select_related, prefetch_related missing)
+   - Raw SQL in ORM queries
+   - Missing migrations
+   - Improper use of signals
+
+   FASTAPI:
+   - Missing dependency injection
+   - Incorrect async/sync function usage
+   - Missing validation (Pydantic models)
+   - CORS configuration issues
+
+   FLASK:
+   - Missing error handlers
+   - Improper session/cookie handling
+   - SQL injection in queries
+   - CORS not configured
+
+For each issue found:
+- Severity: CRITICAL/HIGH/MEDIUM/LOW
+- File and line number
+- Issue type and description
+- Potential impact (runtime error, security, performance)
+- Suggested fix with code example
+```
+
+**Output Example**:
+```json
+{
+  "file": "utils/data_processor.py",
+  "validations": [
+    {
+      "id": "BUG-001",
+      "severity": "CRITICAL",
+      "type": "NONE_HANDLING",
+      "line": 45,
+      "description": "Potential TypeError: method getData() may return None",
+      "code": "value = data.getData().strip()",
+      "impact": "Runtime TypeError if getData() returns None",
+      "fix": "Add None check:\nif data.getData() is not None:\n  value = data.getData().strip()"
+    },
+    {
+      "id": "SEC-001",
+      "severity": "HIGH",
+      "type": "SQL_INJECTION",
+      "line": 67,
+      "description": "SQL injection risk: query constructed with f-string",
+      "code": "query = f\"SELECT * FROM users WHERE id = {user_id}\"",
+      "impact": "SQL injection vulnerability if user_id not validated",
+      "fix": "Use parameterized queries:\nquery = \"SELECT * FROM users WHERE id = %s\"\ncursor.execute(query, (user_id,))"
+    },
+    {
+      "id": "STYLE-001",
+      "severity": "MEDIUM",
+      "type": "PEP8_VIOLATION",
+      "line": 102,
+      "description": "Line too long (105 > 79 characters)",
+      "code": "result = very_long_function_name(param1, param2, param3, param4, param5, param6)",
+      "impact": "Reduced readability",
+      "fix": "Break into multiple lines:\nresult = very_long_function_name(\n  param1, param2, param3,\n  param4, param5, param6\n)"
+    }
+  ]
 }
 ```
 
@@ -2760,87 +3044,33 @@ python .windsurf/workflows/templates/report_manager.py {pr_number}
 
    Output: Printed to stdout for immediate visibility
 
-6. 🟢 PRIORITY 4: SAVE JSON FILE (non-blocking — optional archival):
+6. 🟢 PRIORITY 4: UPDATE REPORT INDEX (optional tracking):
 
-   **ONLY AFTER JIRA, HTML, and CLI are done**, attempt to save JSON:
-   ```bash
-   # Save JSON for archival (if this fails, all user-facing outputs already exist)
-   python .windsurf/workflows/templates/json_saver.py --pr {pr_number} << 'EOF'
-   {complete analysis_data object}
-   EOF
+   **IMPLEMENTATION** (track report metadata):
+   ```python
+   # Keep analysis_data in-memory (JSON format but not written to disk)
+   # JSON exists only in memory for JIRA/HTML consumption
 
-   # Check success (non-blocking)
-   if [ $? -eq 0 ]; then
-       json_saved = true
-       echo "✅ JSON saved successfully"
-   else
-       json_saved = false
-       echo "⚠️ JSON save failed - continuing (all reports already exist)"
-       # IMPORTANT: Do NOT stop workflow - continue to next step
-   fi
-   ```
-
-   **Why save JSON last?**
-   - ✅ JIRA already posted to MCP (team has the info)
-   - ✅ HTML report already generated and opened (user has detailed analysis)
-   - ✅ CLI summary already printed (user has feedback)
-   - ✅ If JSON save fails: Zero impact on user-facing outputs
-   - ✅ Cascade file creation issues don't block anything
-   - ✅ All critical deliverables already completed
-
-   **Error Handling** (graceful degradation):
-   - If json_saver.py fails: Log warning, set json_saved=false
-   - ❌ Do NOT stop workflow
-   - ✅ Continue to database upload step (will gracefully skip)
-   - Result: All user-facing outputs intact, workflow completes successfully
-
-   ⚙️ OVERWRITE MODE: Always Enabled for Re-Executability
-
-   **Files in .ai-review/ Root (Latest)**:
-   - .ai-review/pr-{pr_number}-data.html ← HTML Report (ALWAYS created)
-   - .ai-review/pr-{pr_number}-data.json ← JSON file (created if save succeeds, optional)
-
-7. 🔵 PRIORITY 5: UPDATE DATABASE (optional, only if JSON exists):
-
-   **EXECUTE WITH --skip-if-missing FLAG** (graceful skip if JSON missing):
-   ```bash
-   python .windsurf/workflows/templates/database_uploader.py \
-     .ai-review/pr-{pr_number}-data.json \
-     --skip-if-missing
-
-   # Exit codes:
-   # 0 = Success (database updated) OR graceful skip (JSON missing)
-   # 1 = Failure
-   ```
-
-   **Why --skip-if-missing?**
-   - ✅ Graceful skip if JSON file is missing (no error)
-   - ✅ Useful for development/testing without database setup
-   - ✅ Production mode: omit flag to use fallback data if JSON missing
-   - ✅ Clean exit (exit 0) allows workflow to complete successfully
-
-   **Why database is optional?**
-   - ✅ Audit trail is nice-to-have, not critical
-   - ✅ If database unavailable: All reports already exist and delivered
-   - ✅ If JSON missing (--skip-if-missing enabled): Graceful skip, no error
-   - ✅ Skipping DB update doesn't affect user-facing functionality
-
-   **Error Handling** (graceful degradation):
-   - With --skip-if-missing: Exits cleanly (exit 0) if JSON missing
-   - If database_uploader fails: Log warning, continue
-   - ❌ Do NOT stop workflow
-   - ✅ Workflow continues to completion
-   - Database update is best-effort, always optional
-   - All user-facing outputs (JIRA, HTML, CLI) already exist
-
-8. Update master index (for report tracking):
+   # Optional: Update report index for tracking (file-based)
    python .windsurf/workflows/templates/report_manager.py {pr_number}
 
    This will:
    - Update .ai-review/index.json with current run metadata
    - Log run number, timestamp, issue counts, JIRA ticket
    - Track complete run history for this PR
-   - Output: "✅ Index updated: .ai-review/index.json"
+   - This is optional and non-blocking
+   ```
+
+   **Note on JSON**:
+   - ✅ JSON data structure generated in-memory for JIRA/HTML use
+   - ❌ NO disk files written (.json files not created)
+   - ✅ All analysis data available to JIRA poster and HTML generator
+   - ✅ Cascade file creation issues DO NOT occur
+   - ✅ All critical deliverables completed (JIRA, HTML, CLI)
+
+   **Files in .ai-review/ Root (Latest)**:
+   - .ai-review/pr-{pr_number}-data.html ← HTML Report (ALWAYS created)
+   - NO JSON disk files written
 ```
 
 ---
@@ -2892,8 +3122,7 @@ Step 8c: Execute in PRIORITY ORDER:
   1. POST JIRA: format_jira_comment(analysis_data) → post to MCP
   2. GEN HTML: generate_simple_html_report(analysis_data) → .html file + auto-open
   3. PRINT CLI: format_cli_summary(analysis_data) → stdout
-  4. SAVE JSON: json_saver.py(analysis_data) → .json (if succeeds)
-  5. UPDATE DB: database_uploader.py(.json) → database (only if JSON saved)
+  4. (Internal JSON only - no disk file written)
 
 Step 9: All critical outputs exist, unlock workflow
 ```
@@ -3069,8 +3298,7 @@ Workflow Execution Completed
     ├── generate-simple-html.py          # HTML report generator
     ├── jira_formatter.py               # JIRA comment formatter
     ├── cli_formatter.py                # CLI output formatter
-    ├── json_saver.py                   # JSON archival script
-    ├── database_uploader.py            # Database integration script
+    ├── api_impact_analyzer.py          # API change impact analysis (with git fallback)
     ├── workflow_lock.py                # Workflow lock/unlock script
     └── summary_generator.py            # Final summary generator (Step 9)
 

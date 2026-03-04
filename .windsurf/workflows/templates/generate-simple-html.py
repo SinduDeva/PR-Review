@@ -370,7 +370,19 @@ def generate_html_report(data):
         }}
         .finding-detail strong {{
             display: inline-block;
-            width: 70px;
+            width: 80px;
+        }}
+        .finding-detail pre {{
+            background: #f5f5f5;
+            padding: 8px;
+            border-radius: 3px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            margin: 6px 0;
+        }}
+        .finding-detail code {{
+            color: #333;
         }}
 
         /* Other Sections */
@@ -516,7 +528,8 @@ def generate_html_report(data):
                         <div class="finding-detail"><strong>Type:</strong> {escape_html(issue.get('type', 'Unknown'))}</div>
                         <div class="finding-detail"><strong>Description:</strong> {escape_html(issue.get('description', 'No description'))}</div>
                         {f"<div class='finding-detail'><strong>Impact:</strong> {escape_html(issue.get('impact', ''))}</div>" if issue.get('impact') else ""}
-                        {f"<div class='finding-detail'><strong>Fix:</strong> {escape_html(issue.get('suggestion', ''))}</div>" if issue.get('suggestion') else ""}
+                        {f"<div class='finding-detail'><strong>Code:</strong> <pre><code>{escape_html(issue.get('code', ''))}</code></pre></div>" if issue.get('code') else ""}
+                        {f"<div class='finding-detail'><strong>Recommended Fix:</strong> <pre><code>{escape_html(issue.get('fix') or issue.get('suggestion', ''))}</code></pre></div>" if (issue.get('fix') or issue.get('suggestion')) else ""}
                     </div>
                     ''' for issue in sorted(issues, key=lambda x: {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}.get(x.get('severity', 'LOW'), 4))])}
                 </div>

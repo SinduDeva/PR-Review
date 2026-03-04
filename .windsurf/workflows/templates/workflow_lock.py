@@ -214,7 +214,7 @@ class WorkflowLock:
 
     def lock_workflow_file(self) -> Tuple[bool, str]:
         """
-        Lock workflow file by making it read-only.
+        Lock workflow file AND all template scripts by making them read-only.
         Prevents editing during execution (even by Cascade IDE).
 
         Returns:
@@ -224,33 +224,49 @@ class WorkflowLock:
             import stat
             import platform
 
-            if not os.path.exists(self.workflow_file):
-                return False, f"Workflow file not found: {self.workflow_file}"
+            files_to_lock = [self.workflow_file]
 
-            if platform.system() == 'Windows':
-                # On Windows, remove write permissions (safe and portable)
+            # Also lock all .py files in templates folder
+            templates_dir = Path('.windsurf/workflows/templates')
+            if templates_dir.exists():
+                template_scripts = templates_dir.glob('*.py')
+                files_to_lock.extend([str(f) for f in template_scripts])
+
+            locked_count = 0
+            failed_count = 0
+
+            for file_path in files_to_lock:
+                if not os.path.exists(file_path):
+                    failed_count += 1
+                    continue
+
                 try:
-                    os.chmod(self.workflow_file, stat.S_IREAD)
-                    return True, f"✅ Workflow file locked (read-only)"
+                    if platform.system() == 'Windows':
+                        # On Windows, remove write permissions (safe and portable)
+                        os.chmod(file_path, stat.S_IREAD)
+                    else:
+                        # On Unix/Linux/macOS, remove write permissions (644 → 444)
+                        current_mode = os.stat(file_path).st_mode
+                        # Remove write permissions for owner, group, and others
+                        new_mode = current_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
+                        os.chmod(file_path, new_mode)
+                    locked_count += 1
                 except Exception as e:
-                    return False, f"❌ Could not lock workflow file: {e}"
+                    failed_count += 1
+
+            if locked_count > 0 and failed_count == 0:
+                return True, f"✅ Locked {locked_count} files (workflow + templates)"
+            elif locked_count > 0:
+                return True, f"⚠️ Locked {locked_count} of {len(files_to_lock)} files (with {failed_count} errors)"
             else:
-                # On Unix/Linux/macOS, remove write permissions (644 → 444)
-                try:
-                    current_mode = os.stat(self.workflow_file).st_mode
-                    # Remove write permissions for owner, group, and others
-                    new_mode = current_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
-                    os.chmod(self.workflow_file, new_mode)
-                    return True, f"✅ Workflow file locked (read-only)"
-                except Exception as e:
-                    return False, f"❌ Could not lock workflow file: {e}"
+                return False, f"❌ Could not lock any files"
 
         except Exception as e:
-            return False, f"❌ Error locking workflow file: {e}"
+            return False, f"❌ Error locking files: {e}"
 
     def unlock_workflow_file(self) -> Tuple[bool, str]:
         """
-        Unlock workflow file by making it writable again.
+        Unlock workflow file AND all template scripts by making them writable again.
         Called after execution completes (successfully or with errors).
 
         Returns:
@@ -260,29 +276,45 @@ class WorkflowLock:
             import stat
             import platform
 
-            if not os.path.exists(self.workflow_file):
-                return False, f"Workflow file not found: {self.workflow_file}"
+            files_to_unlock = [self.workflow_file]
 
-            if platform.system() == 'Windows':
-                # On Windows, restore write permissions (safe and portable)
+            # Also unlock all .py files in templates folder
+            templates_dir = Path('.windsurf/workflows/templates')
+            if templates_dir.exists():
+                template_scripts = templates_dir.glob('*.py')
+                files_to_unlock.extend([str(f) for f in template_scripts])
+
+            unlocked_count = 0
+            failed_count = 0
+
+            for file_path in files_to_unlock:
+                if not os.path.exists(file_path):
+                    failed_count += 1
+                    continue
+
                 try:
-                    os.chmod(self.workflow_file, stat.S_IREAD | stat.S_IWRITE)
-                    return True, f"✅ Workflow file unlocked (writable)"
+                    if platform.system() == 'Windows':
+                        # On Windows, restore write permissions (safe and portable)
+                        os.chmod(file_path, stat.S_IREAD | stat.S_IWRITE)
+                    else:
+                        # On Unix/Linux/macOS, restore write permissions (444 → 644)
+                        current_mode = os.stat(file_path).st_mode
+                        # Add write permissions for owner
+                        new_mode = current_mode | stat.S_IWUSR
+                        os.chmod(file_path, new_mode)
+                    unlocked_count += 1
                 except Exception as e:
-                    return False, f"❌ Could not unlock workflow file: {e}"
+                    failed_count += 1
+
+            if unlocked_count > 0 and failed_count == 0:
+                return True, f"✅ Unlocked {unlocked_count} files (workflow + templates)"
+            elif unlocked_count > 0:
+                return True, f"⚠️ Unlocked {unlocked_count} of {len(files_to_unlock)} files (with {failed_count} errors)"
             else:
-                # On Unix/Linux/macOS, restore write permissions (444 → 644)
-                try:
-                    current_mode = os.stat(self.workflow_file).st_mode
-                    # Add write permissions for owner
-                    new_mode = current_mode | stat.S_IWUSR
-                    os.chmod(self.workflow_file, new_mode)
-                    return True, f"✅ Workflow file unlocked (writable)"
-                except Exception as e:
-                    return False, f"❌ Could not unlock workflow file: {e}"
+                return False, f"❌ Could not unlock any files"
 
         except Exception as e:
-            return False, f"❌ Error unlocking workflow file: {e}"
+            return False, f"❌ Error unlocking files: {e}"
 
 
 def print_lock_status(workflow_file: str):

@@ -627,15 +627,16 @@ PRIMARY METHOD:
    - Use from MCP tools context (NOT from git URL parsing)
    → Store: workspace, repo_slug
 
-3. Query Bitbucket for OPEN PRs with PAGINATION (PRIMARY):
+3. Query Bitbucket for OPEN PRs (PRIMARY - FIRST PAGE ONLY):
    Initialize pagination:
      page = 1
-     pageSize = 5
-     max_pages = 20
+     pageSize = 5              # Fetch only 5 PRs per request
+     max_pages = 1             # LIMIT: Search only first page (5 most recent PRs)
      found_pr = None
 
-   Loop until PR found or max pages reached:
+   Fetch first page:
      Try:
+       Log: "Fetching first 5 OPEN PRs from Bitbucket..."
        Call: mcp1_getPullRequests(
          workspace="{workspace}",
          repo_slug="{repo_slug}",
@@ -645,10 +646,10 @@ PRIMARY METHOD:
        )
 
        If result is empty:
-         Log: "No more pages available"
-         Break loop
+         Log: "No OPEN PRs available in repository"
+         → Proceed to FALLBACK METHOD
 
-       For each PR in response:
+       For each PR in response (5 PRs max):
          - Check: PR.source.branch.name == current_branch
          - Check: PR.state == "OPEN"
 
@@ -656,24 +657,19 @@ PRIMARY METHOD:
            → found_pr = PR
            → Extract PR number
            → Break inner loop
-           → Break outer loop
-
-       If found_pr is None:
-         Increment page
-         Continue to next page
-         Log: "Checking page {page}..."
 
      Catch Error:
-       Log: "Error fetching page {page}: {error}"
-       Break loop
+       Log: "Error fetching from Bitbucket: {error}"
+       → Proceed to FALLBACK METHOD
 
-   After pagination loop:
+   After first page fetch:
      If found_pr found:
        → Extract PR number → Record in execution_status
-       → Record: status = "success", fallback_used = false, pages_checked = {page}
+       → Record: status = "success", fallback_used = false, pages_checked = 1
 
        **FRESH DATA CONFIRMATION** (Critical for memory safety):
-       Log: "✅ PR found using FRESH Bitbucket API call (mcp1_getPullRequests)"
+       Log: "✅ PR found in first 5 OPEN PRs from Bitbucket"
+       Log: "✅ Using FRESH Bitbucket API call (mcp1_getPullRequests)"
        Log: "   PR Number: {pr_number}"
        Log: "   PR Title: {pr_title}"
        Log: "   Source Branch: {pr_source_branch}"
@@ -691,8 +687,10 @@ PRIMARY METHOD:
 
        → Continue to Step 1
 
-     Else (no PR found in any page):
-       Log: "No matching PR found in {page} pages (fetched {page * pageSize} PRs)"
+     Else (no PR found in first 5 PRs):
+       Log: "⏭️ PR not found in first 5 OPEN PRs"
+       Log: "   Checked: 5 PRs on page 1"
+       Log: "   Match: None found for branch '{current_branch}'"
        → Proceed to FALLBACK METHOD
 
 FALLBACK METHOD 1 - Bitbucket API (if Primary fails):

@@ -400,6 +400,64 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+# Import lock mechanism for workflow file protection
+try:
+    from .windsurf.workflows.templates.workflow_lock import WorkflowLock
+except ImportError:
+    try:
+        # Alternative import path for Cascade execution context
+        import sys
+        sys.path.insert(0, '.windsurf/workflows/templates')
+        from workflow_lock import WorkflowLock
+    except ImportError:
+        WorkflowLock = None
+
+# ============================================================================
+# TRUNCATION DETECTION HELPER FUNCTION
+# ============================================================================
+def detect_response_truncation(response, retrieved_count, expected_count=None):
+    """
+    Detect if MCP response was truncated by checking multiple indicators.
+
+    Args:
+        response: The API response object (dict-like with values, size, next fields)
+        retrieved_count: Number of items retrieved in current batch
+        expected_count: Expected total items (from response.size field)
+
+    Returns:
+        (is_truncated: bool, reason: str or None)
+    """
+    try:
+        # Check 1: Response size at buffer boundaries (64KB, 1MB)
+        if response and hasattr(response, '__sizeof__'):
+            size = response.__sizeof__()
+            if size > 0 and (size % 65536 == 0 or size % 1048576 == 0):
+                return True, f"Response size {size} is at buffer boundary (potential truncation)"
+
+        # Check 2: Last character of serialized response (should end with } or ])
+        try:
+            if response:
+                response_str = json.dumps(response) if not isinstance(response, str) else response
+                if response_str.rstrip() and not response_str.rstrip().endswith(('}', ']')):
+                    return True, "Response ends with incomplete JSON"
+        except:
+            pass
+
+        # Check 3: Expected vs Retrieved count mismatch
+        if expected_count and retrieved_count:
+            if retrieved_count < expected_count * 0.8:  # Less than 80% retrieved
+                return True, f"Expected {expected_count}, got {retrieved_count} (80% threshold)"
+
+        # Check 4: Round number files with more pages available
+        if retrieved_count in [20, 50, 100, 500, 1000, 2000]:
+            if response and hasattr(response, 'next') and response.next:
+                return True, f"Retrieved exactly {retrieved_count} items (round number with more pages available)"
+
+        return False, None
+    except Exception as e:
+        # If detection fails, return no truncation detected (safe fallback)
+        return False, None
+
 # Print Step 0 initialization banner
 print("\n" + "="*80)
 print("⏳ STEP 0: INITIALIZATION SEQUENCE")
@@ -445,6 +503,19 @@ with open(lock_file, 'w') as f:
 
 print(f"✅ Lock file created: {lock_file}")
 print(f"✅ Execution ID: {workflow_execution_id}")
+
+# Acquire file-level lock (make workflow files read-only)
+if WorkflowLock is not None:
+    try:
+        lock_manager = WorkflowLock('.windsurf/workflows/pr-review-comprehensive.md')
+        success, message = lock_manager.lock_workflow_file()
+        print(f"{message}")
+        if not success:
+            print(f"⚠️  Warning: File locking may not be available on this system")
+    except Exception as e:
+        print(f"⚠️  Error acquiring file lock: {e}")
+else:
+    print(f"⚠️  WorkflowLock not available - skipping file-level lock")
 
 # ============================================================================
 # STEP 0b: PRE-FLIGHT WORKFLOW VALIDATION

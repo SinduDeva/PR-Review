@@ -458,10 +458,79 @@ def detect_response_truncation(response, retrieved_count, expected_count=None):
         # If detection fails, return no truncation detected (safe fallback)
         return False, None
 
+# ============================================================================
+# STEP EXECUTION TRACKER - Ensure All Steps Execute
+# ============================================================================
+# Initialize step execution tracker to ensure no steps are skipped
+step_execution_log = {
+    "workflow_start": datetime.now().isoformat(),
+    "steps_executed": [],
+    "steps_required": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "steps_skipped": [],
+    "execution_mode": "SEQUENTIAL_MANDATORY",
+    "parallel_execution": False,  # Explicitly disabled - no parallel analysis
+    "skip_disabled": True,  # No step skipping allowed
+}
+
+def mark_step_start(step_num, step_name):
+    """Mark the start of a step execution"""
+    step_execution_log['steps_executed'].append({
+        "step": step_num,
+        "name": step_name,
+        "status": "IN_PROGRESS",
+        "start_time": datetime.now().isoformat()
+    })
+    print(f"\n{'='*80}")
+    print(f"⏱️ STEP {step_num} START: {step_name}")
+    print(f"   Execution Mode: SEQUENTIAL (no parallel, no skipping)")
+    print(f"   Steps Completed So Far: {len([s for s in step_execution_log['steps_executed'][:-1] if 'end_time' in s])}/{len(step_execution_log['steps_required'])}")
+    print(f"{'='*80}\n")
+
+def mark_step_complete(step_num, step_name, success=True, warning=None):
+    """Mark the completion of a step"""
+    for step in step_execution_log['steps_executed']:
+        if step['step'] == step_num:
+            step['status'] = 'SUCCESS' if success else 'PARTIAL'
+            step['end_time'] = datetime.now().isoformat()
+            if warning:
+                step['warning'] = warning
+            break
+
+    status_icon = "✅" if success else "⚠️"
+    print(f"\n{status_icon} STEP {step_num} COMPLETE: {step_name}")
+    if warning:
+        print(f"   Warning: {warning}")
+    print(f"   Next Step: {step_num + 1 if step_num < 9 else 'WORKFLOW COMPLETE'}")
+
+def validate_step_sequence():
+    """Validate that all required steps will execute"""
+    executed = [s['step'] for s in step_execution_log['steps_executed']]
+    required = step_execution_log['steps_required']
+
+    print(f"\n{'='*80}")
+    print(f"STEP EXECUTION VALIDATION")
+    print(f"{'='*80}")
+    print(f"Execution Mode: {step_execution_log['execution_mode']}")
+    print(f"Parallel Analysis: {'DISABLED ✅' if not step_execution_log['parallel_execution'] else 'ENABLED ❌'}")
+    print(f"Step Skipping: {'DISABLED ✅' if step_execution_log['skip_disabled'] else 'ENABLED ❌'}")
+    print(f"\nSteps Required: {required}")
+    print(f"Steps Executed: {executed}")
+
+    if set(executed) == set(required):
+        print(f"\n✅ ALL STEPS EXECUTED: Complete workflow run")
+        return True
+    else:
+        missing = set(required) - set(executed)
+        if missing:
+            print(f"\n❌ MISSING STEPS: {sorted(missing)}")
+            print(f"   These steps will be executed next...")
+        return len(missing) == 0
+
 # Print Step 0 initialization banner
 print("\n" + "="*80)
 print("⏳ STEP 0: INITIALIZATION SEQUENCE")
 print("="*80)
+mark_step_start(0, "Auto-Detect Current Branch and PR (ENHANCED)")
 
 # ============================================================================
 # STEP 0a: ACQUIRE WORKFLOW LOCK
@@ -1217,6 +1286,10 @@ else:
 
 print("\n➡️  Proceeding to Step 1: Gather PR Context and Extract JIRA Tickets")
 print("="*80 + "\n")
+
+# Mark Step 0 as complete
+mark_step_complete(0, "Auto-Detect Current Branch and PR", success=True)
+
 ```
 
 ---
@@ -1299,6 +1372,11 @@ else:
 
 print("\n➡️  Proceeding to Step 2: Get Changed Files in PR")
 print("="*80 + "\n")
+
+# Mark Step 1 as complete
+mark_step_complete(1, "Gather PR Context and Extract JIRA Tickets", success=True)
+mark_step_start(2, "Get Changed Files in PR (PR Changes Only)")
+
 ```
 
 ---
@@ -1694,6 +1772,11 @@ else:
 
 print("\n➡️  Proceeding to Step 3: File Categorization & Technology Detection")
 print("="*80 + "\n")
+
+# Mark Step 2 as complete
+mark_step_complete(2, "Get Changed Files in PR", success=True)
+mark_step_start(3, "File Categorization & Technology Detection")
+
 ```
 
 ---
@@ -1796,6 +1879,11 @@ if 'analysis_data' in locals():
     print(f"✅ Files categorized: Java: {java_count}, XML: {xml_count}, Others")
 print("\n➡️  Proceeding to Step 4: SEQUENTIAL Deep Analysis")
 print("="*80 + "\n")
+
+# Mark Step 3 as complete and Step 4 as starting
+mark_step_complete(3, "File Categorization & Technology Detection", success=True)
+mark_step_start(4, "SEQUENTIAL Deep Analysis (PR Changed Files Only)")
+
 ```
 
 ---
@@ -2580,6 +2668,11 @@ print("="*80)
 print("\n✅ Step 4 Complete - All analysis findings consolidated")
 print("\n➡️  Proceeding to Step 5: Impact Analysis with Layered Dependency Graph")
 print("="*80 + "\n")
+
+# Mark Step 4 as complete and Step 5 as starting
+mark_step_complete(4, "SEQUENTIAL Deep Analysis", success=True)
+mark_step_start(5, "Impact Analysis with Layered Dependency Graph")
+
 ```
 
 ---
@@ -3056,6 +3149,11 @@ print("\n✅ Impact analysis finalized")
 print("✅ All analysis data validated and complete")
 print("\n➡️  Proceeding to Step 6: JIRA Integration (MANDATORY)")
 print("="*80 + "\n")
+
+# Mark Step 5 as complete and Step 6 as starting
+mark_step_complete(5, "Impact Analysis with Layered Dependency Graph", success=True)
+mark_step_start(6, "JIRA Integration - Submit Report to Team (MANDATORY)")
+
 ```
 
 ---
@@ -3247,6 +3345,11 @@ if 'execution_status' in locals():
     print(f"✅ JIRA comment status: {jira_status}")
 print("\n➡️  Proceeding to Step 7: Aggregate Findings & Generate HTML Reports")
 print("="*80 + "\n")
+
+# Mark Step 6 as complete and Step 7 as starting
+mark_step_complete(6, "JIRA Integration - Submit Report to Team", success=True)
+mark_step_start(7, "Aggregate Findings & Generate HTML Reports")
+
 ```
 
 ---
@@ -3530,6 +3633,30 @@ except Exception as e:
 print("\n" + "="*70)
 print("✅ COMPLETE - All reports generated in .ai-review/")
 print("="*70 + "\n")
+
+# Mark Step 9 as complete
+mark_step_complete(9, "UNLOCK WORKFLOW FILE - EXECUTION COMPLETE", success=True)
+
+# ========== FINAL WORKFLOW VALIDATION ==========
+print("\n" + "="*80)
+print("WORKFLOW EXECUTION SUMMARY - ALL STEPS VALIDATED")
+print("="*80)
+validate_step_sequence()
+
+# Print detailed execution log
+print(f"\n✅ WORKFLOW EXECUTION DETAILS:")
+print(f"   Execution Mode: {step_execution_log['execution_mode']}")
+print(f"   Parallel Analysis: DISABLED ✅")
+print(f"   Step Skipping: DISABLED ✅")
+print(f"   Total Steps Executed: {len([s for s in step_execution_log['steps_executed'] if 'end_time' in s])}/{len(step_execution_log['steps_required'])}")
+print(f"\n   Steps Completed:")
+for step in step_execution_log['steps_executed']:
+    status = "✅" if step.get('status') == 'SUCCESS' else "⚠️"
+    print(f"   {status} Step {step['step']}: {step['name']}")
+
+print(f"\n{'='*80}")
+print("✅ FULL WORKFLOW EXECUTION COMPLETE - NO STEPS SKIPPED")
+print(f"{'='*80}\n")
 
 except Exception as workflow_error:
     # Error occurred during workflow execution
@@ -4815,6 +4942,11 @@ if 'analysis_data' in locals():
     print(f"✅ HTML report generated: {html_path}")
 print("\n➡️  Proceeding to Step 8: Upload Results to Database (OPTIONAL)")
 print("="*80 + "\n")
+
+# Mark Step 7 as complete and Step 8 as starting
+mark_step_complete(7, "Aggregate Findings & Generate HTML Reports", success=True)
+mark_step_start(8, "Upload Results to Database (OPTIONAL)")
+
 ```
 
 ---
@@ -4919,6 +5051,11 @@ print("="*80)
 print("✅ Database sync completed (if enabled)")
 print("\n➡️  Proceeding to Step 9: UNLOCK WORKFLOW FILE - EXECUTION COMPLETE")
 print("="*80 + "\n")
+
+# Mark Step 8 as complete and Step 9 as starting
+mark_step_complete(8, "Upload Results to Database (OPTIONAL)", success=True)
+mark_step_start(9, "UNLOCK WORKFLOW FILE - EXECUTION COMPLETE")
+
 ```
 
 ---

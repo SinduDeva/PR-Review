@@ -805,6 +805,91 @@ print("Proceeding to PR auto-detection with fresh state...")
 print("="*70 + "\n")
 ```
 
+# ============================================================================
+# STEP 0d: PR DETECTION - EXECUTABLE CODE WITH FALLBACK
+# ============================================================================
+# This code implements PR detection fallback logic after MCP calls complete.
+# Primary detection (mcp1_getPullRequests) is called by Cascade IDE.
+# If PR is not detected or response is truncated, this code provides fallback.
+
+```python
+import re
+import subprocess
+
+print("\n" + "-"*80)
+print("Step 0d: PR Detection (Fallback & Validation)")
+print("-"*80)
+
+# ========== METHOD 1: Check if Primary Detection Already Succeeded ==========
+pr_detected = False
+if 'execution_status' in locals() and execution_status.get('pr_number'):
+    pr_detected = True
+    print(f"✅ PR Already Detected (via primary MCP call)")
+    print(f"   PR Number: {execution_status['pr_number']}")
+    print(f"   PR Title: {execution_status.get('pr_title', 'N/A')}")
+    print(f"   Source Branch: {execution_status.get('pr_source_branch', 'N/A')}")
+
+# ========== METHOD 2: Fallback - Git-Based Local Detection ==========
+if not pr_detected:
+    print(f"\n⚠️ PR not detected via primary method. Attempting fallback...")
+    print(f"   Fallback 1: Git branch name pattern matching")
+    print(f"   Fallback 2: Git local merge commit detection")
+
+    try:
+        # Get current branch name
+        current_branch = subprocess.check_output(
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            stderr=subprocess.STDOUT,
+            universal_newlines=True
+        ).strip()
+        print(f"\n✅ Current branch: {current_branch}")
+
+        # Try to extract PR number from branch name (PR-123, pr-456, etc.)
+        pr_pattern = r'[Pp][Rr][-_]?(\d+)'
+        pr_match = re.search(pr_pattern, current_branch)
+
+        if pr_match:
+            extracted_pr = pr_match.group(1)
+            execution_status['pr_number'] = int(extracted_pr)
+            execution_status['pr_detection_method'] = 'git_branch_fallback'
+            execution_status['fallback_used'] = True
+            print(f"✅ PR extracted from branch name: #{extracted_pr}")
+            print(f"   Detection Method: Git branch name pattern")
+            print(f"   Warning: Using fallback - verify this PR exists in Bitbucket")
+            pr_detected = True
+        else:
+            print(f"⚠️ No PR pattern found in branch name: {current_branch}")
+            print(f"   Expected patterns: PR-123, pr-456, etc.")
+
+    except Exception as e:
+        print(f"⚠️ Error getting branch from git: {e}")
+
+# ========== VALIDATION: Ensure PR was detected ==========
+if not pr_detected or not execution_status.get('pr_number'):
+    print(f"\n❌ CRITICAL: PR Detection Failed")
+    print(f"   Primary Method: MCP getPullRequests (no match found)")
+    print(f"   Fallback 1: Git branch pattern (no PR-123 pattern)")
+    print(f"   Fallback 2: Git local detection (unavailable)")
+    print(f"\n❌ WORKFLOW CANNOT CONTINUE WITHOUT PR NUMBER")
+    print(f"   Please create a PR first, or run workflow on a branch with PR-### pattern")
+    print(f"\n   Troubleshooting:")
+    print(f"   1. Verify you have a PR open for your current branch")
+    print(f"   2. Try renaming branch to include PR number (e.g., PR-123-feature)")
+    print(f"   3. Check Bitbucket for OPEN PRs on current branch")
+    sys.exit(1)
+
+# ========== SUMMARY ==========
+print(f"\n✅ STEP 0d: PR DETECTION COMPLETE")
+print(f"   PR Number: {execution_status.get('pr_number')}")
+print(f"   Detection Method: {execution_status.get('pr_detection_method', 'primary')}")
+if execution_status.get('fallback_used'):
+    print(f"   ⚠️ Note: Using fallback method (verify PR is correct)")
+else:
+    print(f"   ✓ Fresh data from Bitbucket MCP API")
+print(f"   Ready for Step 1: Gather PR Context")
+
+```
+
 **Pre-Detection Verification** (ensure fresh state):
 ```bash
 VERIFY NO MEMORY CARRYOVER:
@@ -1550,6 +1635,44 @@ Function: deduplicate_by_path(files)
 print("\n" + "="*80)
 print("✅ STEP 2 COMPLETE: Get Changed Files in PR")
 print("="*80)
+
+# ========== TRUNCATION DETECTION & VALIDATION ==========
+# Check if file list might be truncated (added after MCP diffstat calls complete)
+files_truncated = False
+truncation_warnings = []
+
+if 'analysis_data' in locals() and analysis_data.get('files_analyzed'):
+    files_count = len(analysis_data['files_analyzed'])
+
+    # Check 1: Round number detection (50, 100, 500, 1000, 2000)
+    if files_count in [50, 100, 500, 1000, 2000]:
+        truncation_warnings.append(f"Round number of files ({files_count}) retrieved")
+        files_truncated = True
+
+    # Check 2: Check if expected_total exists and less than 80% retrieved
+    if 'pagination_metadata' in analysis_data:
+        metadata = analysis_data.get('pagination_metadata', {})
+        expected_total = metadata.get('total_items_retrieved', files_count)
+        pages_fetched = metadata.get('pages_fetched', 1)
+
+        # If we fetched max pages, likely truncated
+        if pages_fetched >= 100:
+            truncation_warnings.append(f"Max pages ({pages_fetched}) reached - PR may have more files")
+            files_truncated = True
+
+        # Check if metadata already indicates truncation
+        if metadata.get('truncated'):
+            truncation_warnings.append("Pagination metadata indicates truncation")
+            files_truncated = True
+
+    # Log truncation warnings
+    if files_truncated:
+        print(f"\n⚠️  TRUNCATION DETECTED in file list:")
+        for warning in truncation_warnings:
+            print(f"   - {warning}")
+        print(f"\n   Files retrieved: {files_count} (may be incomplete)")
+        print(f"   Using retrieved files for analysis (fallback if needed)")
+        print(f"   Note: Analysis will be based on {files_count} files available")
 
 # Log pagination results (based on MCP1 calls completed above)
 if 'analysis_data' in locals() and analysis_data.get('files_analyzed'):

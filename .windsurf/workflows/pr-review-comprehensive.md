@@ -3506,14 +3506,26 @@ try:
     # Remove lock file to allow next execution
     if os.path.exists(lock_file):
         os.remove(lock_file)
-        print(f"\n✅ WORKFLOW UNLOCKED")
-        print(f"   Lock file removed: {lock_file}")
-        print(f"   Next execution can now start")
+        print(f"\n✅ WORKFLOW LOCK FILE REMOVED")
+        print(f"   Lock file deleted: {lock_file}")
+
+    # Release file-level lock (make workflow files writable again)
+    if WorkflowLock is not None:
+        try:
+            lock_manager = WorkflowLock('.windsurf/workflows/pr-review-comprehensive.md')
+            success, message = lock_manager.unlock_workflow_file()
+            print(f"{message}")
+            if success:
+                print(f"   Workflow file is now WRITABLE")
+        except Exception as e:
+            print(f"⚠️  Warning unlocking files: {e}")
     else:
-        print(f"\n⚠️  Lock file not found (may have been manually removed)")
+        print(f"⚠️  WorkflowLock not available - skipping file unlock")
+
+    print(f"\n   Next execution can now start")
 except Exception as e:
-    print(f"\n⚠️  Could not remove lock file: {e}")
-    print(f"   Manual cleanup may be needed: {lock_file}")
+    print(f"\n⚠️  Could not release locks: {e}")
+    print(f"   Manual cleanup may be needed")
 
 print("\n" + "="*70)
 print("✅ COMPLETE - All reports generated in .ai-review/")
@@ -3528,7 +3540,14 @@ except Exception as workflow_error:
     print(f"\nAttempting to unlock workflow file...")
 
     # Ensure lock is released even on failure
-    unlock_workflow()
+    try:
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+        if WorkflowLock is not None:
+            lock_manager = WorkflowLock('.windsurf/workflows/pr-review-comprehensive.md')
+            lock_manager.unlock_workflow_file()
+    except:
+        pass
 
     print(f"\nStack trace:")
     import traceback
